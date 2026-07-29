@@ -1,0 +1,15 @@
+<!doctype html>
+<html><head><base target="_top"><style>
+  body{font:14px/1.45 Arial,sans-serif;margin:0;color:#17324d}main{padding:22px}.warning{background:#fff2cc;border-left:4px solid #d6a800;padding:12px;margin:12px 0}.list{max-height:260px;overflow:auto;border:1px solid #d8e1e8;border-radius:6px}.item{padding:9px 11px;border-bottom:1px solid #e8eef2}.item:last-child{border:0}.muted{color:#597080}.actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}button{border:0;border-radius:6px;padding:10px 14px;cursor:pointer}.send{background:#9c1c1c;color:white}.cancel{background:#e8eef2}.error{color:#9c1c1c;white-space:pre-wrap}
+</style></head><body><main>
+  <h2>Confirm send</h2><div class="warning">This will send <strong id="count"></strong> email(s). This action is not a test and cannot be undone.</div>
+  <p>Sender: <strong id="sender"></strong><br>Daily limit: <strong id="limit"></strong></p><div id="items" class="list"></div><div id="error" class="error"></div>
+  <div class="actions"><button class="cancel" onclick="google.script.host.close()">Cancel</button><button id="send" class="send" onclick="confirmSend()">Send approved emails</button></div>
+</main><script>
+  const data = <?!= JSON.stringify(data) ?>;
+  const esc = v => String(v == null ? '' : v).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+  document.getElementById('count').textContent=data.count;document.getElementById('sender').textContent=data.sender;document.getElementById('limit').textContent=data.dailyLimit;
+  document.getElementById('items').innerHTML=data.items.map(i=>`<div class="item"><strong>${esc(i.recipient)}</strong><br><span class="muted">${esc(i.company)} · ${esc(i.type)}</span></div>`).join('');
+  function confirmSend(){document.getElementById('send').disabled=true;google.script.run.withSuccessHandler(result=>{document.getElementById('items').innerHTML=`Sent ${result.sent}; failed ${result.failed}.`;setTimeout(()=>google.script.host.close(),2200)}).withFailureHandler(error=>{document.getElementById('error').textContent=error.message||String(error);document.getElementById('send').disabled=false}).confirmSendBatch(data.token)}
+</script></body></html>
+

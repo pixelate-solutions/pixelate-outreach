@@ -1,0 +1,80 @@
+<!doctype html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    body { font: 14px/1.45 Arial, sans-serif; margin: 0; color: #17324d; }
+    main { padding: 22px; }
+    h2 { margin: 0 0 6px; }
+    .drop { border: 2px dashed #8db4cb; border-radius: 10px; padding: 22px; background: #f6fafc; }
+    input[type=file] { width: 100%; }
+    .summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 16px 0; }
+    .card { background: #eaf3f8; border-radius: 8px; padding: 10px; }
+    .card strong { display: block; font-size: 20px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { text-align: left; padding: 7px; border-bottom: 1px solid #d8e1e8; }
+    th { background: #17324d; color: white; }
+    button { border: 0; border-radius: 6px; padding: 10px 14px; cursor: pointer; }
+    .primary { background: #2f6f9f; color: white; }
+    .secondary { background: #e8eef2; color: #17324d; }
+    .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+    .error { color: #9c1c1c; white-space: pre-wrap; }
+    .muted { color: #597080; }
+    #preview { display:none; }
+  </style>
+</head>
+<body>
+<main>
+  <h2>Import Apollo contacts</h2>
+  <p class="muted">Apollo is used only as the original CSV source. Existing research, email, draft, and send fields are preserved.</p>
+  <div class="drop"><input id="file" type="file" accept=".csv,text/csv"></div>
+  <p><label><input id="update" type="checkbox"> Refresh mapped Apollo fields on existing contacts (workflow fields remain untouched)</label></p>
+  <div id="status" class="muted"></div>
+  <div id="error" class="error"></div>
+  <section id="preview">
+    <div id="summary" class="summary"></div>
+    <div style="max-height:240px;overflow:auto"><table><thead><tr><th>Name</th><th>Email</th><th>Company</th><th>Domain</th><th>Status</th></tr></thead><tbody id="rows"></tbody></table></div>
+  </section>
+  <div class="actions"><button class="secondary" onclick="google.script.host.close()">Cancel</button><button id="import" class="primary" disabled onclick="confirmImport()">Confirm import</button></div>
+</main>
+<script>
+  let csvText = '';
+  const file = document.getElementById('file');
+  file.addEventListener('change', () => {
+    const selected = file.files[0];
+    if (!selected) return;
+    document.getElementById('error').textContent = '';
+    document.getElementById('status').textContent = 'Reading and validating…';
+    const reader = new FileReader();
+    reader.onload = () => {
+      csvText = String(reader.result || '');
+      google.script.run.withSuccessHandler(renderPreview).withFailureHandler(showError).previewApolloCsv(csvText);
+    };
+    reader.onerror = () => showError({message:'Could not read the selected file.'});
+    reader.readAsText(selected);
+  });
+  function renderPreview(data) {
+    document.getElementById('status').textContent = 'Preview ready. Confirm before any rows are written.';
+    const cards = [
+      ['Parsed', data.rowCount], ['Unique contacts', data.uniqueContactCount], ['Unique companies', data.uniqueCompanyCount],
+      ['Duplicates', data.duplicateCount], ['Invalid/missing email', data.invalidEmailCount]
+    ];
+    document.getElementById('summary').innerHTML = cards.map(c => `<div class="card"><span>${escapeHtml(c[0])}</span><strong>${c[1]}</strong></div>`).join('');
+    document.getElementById('rows').innerHTML = data.preview.map(r => `<tr><td>${escapeHtml(r.fullName)}</td><td>${escapeHtml(r.email)}</td><td>${escapeHtml(r.company)}</td><td>${escapeHtml(r.domain)}</td><td>${escapeHtml(r.emailStatus)}</td></tr>`).join('');
+    document.getElementById('preview').style.display = 'block';
+    document.getElementById('import').disabled = false;
+  }
+  function confirmImport() {
+    document.getElementById('import').disabled = true;
+    document.getElementById('status').textContent = 'Importing…';
+    google.script.run.withSuccessHandler(result => {
+      document.getElementById('status').textContent = `Done: ${result.imported} imported, ${result.updated} updated, ${result.skippedExisting} existing skipped, ${result.duplicateRowsInFile} duplicate CSV rows ignored.`;
+      setTimeout(() => google.script.host.close(), 2200);
+    }).withFailureHandler(showError).importApolloCsv(csvText, document.getElementById('update').checked);
+  }
+  function showError(error) { document.getElementById('error').textContent = error.message || String(error); document.getElementById('status').textContent = ''; document.getElementById('import').disabled = false; }
+  function escapeHtml(value) { return String(value == null ? '' : value).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
+</script>
+</body>
+</html>
+

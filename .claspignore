@@ -1,0 +1,8 @@
+node_modules/**
+tests/**
+scripts/**
+outputs/**
+README.md
+SETUP.md
+TESTING.md
+package*.json

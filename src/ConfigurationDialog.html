@@ -1,0 +1,45 @@
+<!doctype html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    body { font: 14px/1.45 Arial, sans-serif; margin: 0; color:#17324d; }
+    main { padding:22px; }
+    label { display:block; margin:14px 0 5px; font-weight:bold; }
+    input, textarea { width:100%; box-sizing:border-box; border:1px solid #b8c9d4; border-radius:6px; padding:9px; font:inherit; }
+    textarea { min-height:110px; resize:vertical; }
+    .row { display:flex; gap:8px; justify-content:flex-end; margin-top:16px; }
+    button { border:0; border-radius:6px; padding:10px 14px; cursor:pointer; }
+    .primary { background:#2f6f9f; color:white; }
+    .secondary { background:#e8eef2; }
+    .muted { color:#597080; }
+    .error { color:#9c1c1c; }
+  </style>
+</head>
+<body><main>
+  <h2>Secure configuration</h2>
+  <p id="keyStatus" class="muted">Loading…</p>
+  <label for="apiKey">OpenAI API key</label>
+  <input id="apiKey" type="password" autocomplete="off" placeholder="Leave blank to keep the current key">
+  <p><label style="font-weight:normal"><input id="clearKey" type="checkbox" style="width:auto"> Remove the stored API key</label></p>
+  <label for="signatureHtml">Gmail signature HTML</label>
+  <textarea id="signatureHtml" placeholder="Paste signature HTML or use Load Gmail Signature from the menu"></textarea>
+  <label for="signaturePlain">Plain-text signature fallback</label>
+  <textarea id="signaturePlain"></textarea>
+  <label for="testEmail">Test email address</label>
+  <input id="testEmail" type="email" placeholder="your-address@example.com">
+  <div id="error" class="error"></div><div class="row"><button class="secondary" onclick="google.script.host.close()">Cancel</button><button class="primary" onclick="save()">Save securely</button></div>
+</main><script>
+  google.script.run.withSuccessHandler(data => {
+    document.getElementById('keyStatus').textContent = data.apiKeyConfigured ? 'OpenAI API key is configured. The raw value is not displayed.' : 'OpenAI API key is not configured.';
+    document.getElementById('signatureHtml').value = data.signatureHtml || '';
+    document.getElementById('signaturePlain').value = data.signaturePlainText || '';
+    document.getElementById('testEmail').value = data.testEmail || '';
+  }).withFailureHandler(showError).getSecureConfigurationForDialog();
+  function save() {
+    const payload = { apiKey: document.getElementById('apiKey').value, clearApiKey: document.getElementById('clearKey').checked, signatureHtml: document.getElementById('signatureHtml').value, signaturePlainText: document.getElementById('signaturePlain').value, testEmail: document.getElementById('testEmail').value };
+    google.script.run.withSuccessHandler(() => google.script.host.close()).withFailureHandler(showError).saveSecureConfiguration(payload);
+  }
+  function showError(error) { document.getElementById('error').textContent = error.message || String(error); }
+</script></body></html>
+

@@ -1,0 +1,20 @@
+{
+  "name": "pixelate-outbound-assistant",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Production-ready Google Sheets and Gmail outreach automation for Pixelate.",
+  "scripts": {
+    "test": "node tests/run-tests.cjs",
+    "check": "node scripts/check-project.cjs",
+    "clasp:login": "clasp login",
+    "clasp:create": "clasp create --type sheets --title \"Pixelate Outbound Assistant\" --rootDir src",
+    "clasp:push": "clasp push",
+    "clasp:open": "clasp open"
+  },
+  "devDependencies": {
+    "@google/clasp": "3.3.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

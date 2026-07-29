@@ -1,0 +1,21 @@
+<!doctype html>
+<html><head><base target="_top"><style>
+  body{font:13px/1.45 Arial,sans-serif;margin:0;color:#17324d}main{padding:16px}.top{display:flex;justify-content:space-between;align-items:center}.badge{display:inline-block;padding:3px 7px;border-radius:10px;background:#eaf3f8;margin-right:5px}.panel{border:1px solid #d8e1e8;border-radius:8px;padding:11px;margin:10px 0}.email{white-space:pre-wrap;background:#f7f9fa}.warning{background:#fff2cc;border-color:#e4c344}.blocking{background:#f4cccc;border-color:#d98888;white-space:pre-wrap}a{color:#2f6f9f}.grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}button{border:0;border-radius:6px;padding:9px 8px;cursor:pointer;background:#e8eef2;color:#17324d}.primary{background:#2f6f9f;color:white}.danger{background:#f4cccc}.nav{display:flex;gap:8px}.nav button{flex:1}.muted{color:#597080}.error{color:#9c1c1c;white-space:pre-wrap}.signature{border-top:1px solid #d8e1e8;margin-top:10px;padding-top:10px}
+</style></head><body><main><div class="top"><strong>Lead review</strong><span id="position" class="muted"></span></div><div id="content">Loading…</div><div id="error" class="error"></div></main><script>
+  let current=null;
+  function load(row){document.getElementById('error').textContent='';google.script.run.withSuccessHandler(render).withFailureHandler(showError).getReviewLead(row||null)}
+  function render(data){current=data;if(data.empty){document.getElementById('content').innerHTML='<p>No leads found.</p>';return}const e=escapeHtml;document.getElementById('content').innerHTML=`
+    <h2>${e(data.contact)}</h2><p class="muted">${e(data.title)} · ${e(data.company)}</p>
+    <p><span class="badge">Fit ${e(data.fitScore)} ${e(data.fitLevel)}</span><span class="badge">Confidence ${e(data.confidence)}</span><span class="badge">${e(data.draftStatus)}</span></p>
+    ${data.warning?`<div class="panel warning">${e(data.warning)}</div>`:''}
+    <div class="panel"><strong>Verified evidence</strong>${data.evidence.map(x=>`<p>${e(x.claim)}<br>${x.url?`<a href="${e(x.url)}" target="_blank">Open source</a>`:''}</p>`).join('')||'<p class="muted">No evidence.</p>'}</div>
+    <div class="panel"><strong>Recommended project</strong><p>${e(data.recommendedProject)}</p></div>
+    ${data.qualityWarnings?`<div class="panel blocking"><strong>Quality warnings</strong>\n${e(data.qualityWarnings)}</div>`:''}
+    <div class="panel email"><strong>${e(data.subject)}</strong>\n\n${e(data.body)}${data.optOut?'\n\n'+e(data.optOut):''}<div class="signature">${data.signatureHtml||'<span class="muted">No HTML signature configured.</span>'}</div></div>
+    <div class="grid"><button class="primary" onclick="act('approve')">Approve</button><button class="primary" onclick="act('approve_draft')">Approve + draft</button><button onclick="act('regenerate')">Regenerate</button><button onclick="act('edit')">Edit in Sheet</button><button onclick="act('skip')">Skip</button><button onclick="act('low_fit')">Mark Low Fit</button><button class="danger" style="grid-column:1/3" onclick="act('dnc')">Mark Do Not Contact</button></div>
+    <div class="nav" style="margin-top:10px"><button ${data.previousRow?'':'disabled'} onclick="load(current.previousRow)">Previous</button><button ${data.nextRow?'':'disabled'} onclick="load(current.nextRow)">Next</button></div>`;document.getElementById('position').textContent='Row '+data.rowNumber+(data.approved?' · Approved':'')}
+  function act(action){if(!current)return;google.script.run.withSuccessHandler(data=>{if(action==='skip'&&current.nextRow)load(current.nextRow);else render(data)}).withFailureHandler(showError).handleReviewAction(action,current.rowNumber)}
+  function showError(error){document.getElementById('error').textContent=error.message||String(error)}
+  function escapeHtml(v){return String(v==null?'':v).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
+  load();
+</script></body></html>
