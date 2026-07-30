@@ -15,7 +15,8 @@ Current deployment status:
 - the Gmail sender identity, reply-to, test address, and signature are configured;
 - `gpt-5.6-luna` with `low` reasoning is active;
 - Test mode is on, automatic sending is off, follow-ups are off, and no emails have been sent;
-- the OpenAI API key and physical mailing address still require private operator input before AI research or production sending.
+- the OpenAI API key is configured and has passed live research and generation checks;
+- the physical mailing address still requires private operator input before production sending.
 
 ## 1. Enable Apps Script API access
 

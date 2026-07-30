@@ -40,7 +40,7 @@ const context = {
   getConfig_: () => ({ 'Minimum research confidence': 65 }),
 };
 vm.createContext(context);
-for (const file of ['Constants.gs','Utilities.gs','LeadRepository.gs','DoNotContactService.gs','EmailValidator.gs','GmailService.gs','SendingService.gs','FollowUpService.gs','ReplyTrackingService.gs','ResearchService.gs']) {
+for (const file of ['Constants.gs','Utilities.gs','LeadRepository.gs','DoNotContactService.gs','EmailValidator.gs','EmailGenerationService.gs','GmailService.gs','SendingService.gs','FollowUpService.gs','ReplyTrackingService.gs','ResearchService.gs']) {
   vm.runInContext(fs.readFileSync(path.join(root, 'src', file), 'utf8'), context, { filename: file });
 }
 
@@ -110,6 +110,22 @@ test('unsupported-claim warnings catch internal process assumptions', () => {
   const config = {'Maximum email word count':110,'Minimum research confidence':65,'Minimum fit score':50,'Minimum email quality score':80,'Allow case-study reference':false};
   const result = context.validateGeneratedEmail_(lead,email,config,[]);
   assert.ok(result.hardIssues.some(issue => /unsupported/.test(issue)));
+});
+
+test('implementation and no-change promises are blocked', () => {
+  const lead = {'First Name':'Jane','Company':'Acme','Research Confidence':90,'Fit Level':'High','Fit Score':90,'Evidence 1':'Acme makes industrial pumps','Evidence 1 URL':'https://acme.com/pumps','Evidence 2':'Acme offers field service'};
+  const email = {subject:'Pump service portal',subject_alternatives:['A','B'],body_plain_text:'Hi Jane,\n\nAcme makes industrial pumps. Pixelate could build a service portal without changing existing tools.\n\nWould that be useful?',personalized_opener:'Acme makes industrial pumps',project_hypothesis:'Portal',cta:'Would that be useful?',quality_score:90,quality_issues:[],research_claims_used:['Acme makes industrial pumps'],safe_to_send:true};
+  const config = {'Maximum email word count':110,'Minimum research confidence':65,'Minimum fit score':50,'Minimum email quality score':80,'Allow case-study reference':false};
+  const result = context.validateGeneratedEmail_(lead,email,config,[]);
+  assert.ok(result.hardIssues.some(issue => /implementation or current-state/.test(issue)));
+});
+
+test('email regeneration excludes the current row from similarity checks', () => {
+  const records = [
+    {rowNumber: 2, body: 'Current row body'},
+    {rowNumber: 3, body: 'Another lead body'}
+  ];
+  assert.deepStrictEqual(Array.from(context.otherLeadBodies_(records, 2)), ['Another lead body']);
 });
 
 test('Do Not Contact enforcement matches email and domain', () => {

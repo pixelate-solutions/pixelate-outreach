@@ -48,6 +48,7 @@ function validateGeneratedEmail_(lead, email, config, existingBodies) {
   if (/\b(book|schedule|grab)\b.{0,20}\b(call|meeting|calendar)\b/i.test(body)) add('Call to action may be too aggressive.', 12, false);
   if (/\b(amazing|impressive|incredible|love what|big fan)\b/i.test(body)) add('Email contains a generic or fake compliment.', 15, true);
   if (/\b(I know|you are struggling|you struggle|still using spreadsheets|current process is inefficient)\b/i.test(body)) add('Email contains an unsupported internal-process claim.', 30, true);
+  if (/\b(without (?:changing|replacing)|no (?:changes?|replacement|migration)|replace(?:ment|s|d|ing)?|migrat(?:e|es|ed|ing|ion)|integrat(?:e|es|ed|ing|ion))\b/i.test(body)) add('Email contains an unsupported implementation or current-state claim.', 30, true);
   if (/\b\d+(?:\.\d+)?%\b|\$\d+/i.test(body)) add('Email contains an unverified metric or financial claim.', 25, true);
   if (Number(lead['Research Confidence']) < minimumConfidence) add('Research confidence is below the configured threshold.', 40, true);
   if (!lead['Evidence 1 URL'] || !lead['Evidence 1']) add('Verified source evidence is missing.', 40, true);

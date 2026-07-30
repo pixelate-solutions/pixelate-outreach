@@ -20,7 +20,9 @@ function generateEmailRows_(rows) {
   var lock = LockService.getDocumentLock();
   if (!lock.tryLock(30000)) throw new Error('Another batch is already running.');
   var config = getConfig_();
-  var existingBodies = getAllLeads_().map(function(lead) { return lead['Email Body']; }).filter(function(body) { return body; });
+  var existingBodyRecords = getAllLeads_().map(function(lead) {
+    return { rowNumber: lead._rowNumber, body: lead['Email Body'] };
+  }).filter(function(record) { return record.body; });
   var summary = { processed: 0, blocked: 0, failed: 0 };
   try {
     rows.forEach(function(row) {
@@ -29,7 +31,7 @@ function generateEmailRows_(rows) {
       try {
         assertLeadReadyForGeneration_(lead, config);
         var email = generateEmailForLead_(lead, config);
-        var validation = validateGeneratedEmail_(lead, email, config, existingBodies);
+        var validation = validateGeneratedEmail_(lead, email, config, otherLeadBodies_(existingBodyRecords, lead._rowNumber));
         if (shouldRunSecondAiQualityCheck_(validation, email, config)) {
           var aiReview = runSecondAiEmailQualityCheck_(lead, email);
           validation.score = Math.min(validation.score, Number(aiReview.quality_score));
@@ -42,6 +44,11 @@ function generateEmailRows_(rows) {
             var text = 'Second AI review: ' + issue;
             if (validation.issues.indexOf(text) === -1) validation.issues.push(text);
           });
+          if (Number(aiReview.quality_score) < Number(config['Minimum email quality score'])) {
+            var scoreText = 'Second AI review quality score ' + Number(aiReview.quality_score) + ' is below the configured minimum of ' + Number(config['Minimum email quality score']) + '.';
+            if (validation.issues.indexOf(scoreText) === -1) validation.issues.push(scoreText);
+            if (validation.hardIssues.indexOf(scoreText) === -1) validation.hardIssues.push(scoreText);
+          }
           if (!aiReview.safe_to_send) {
             var unsafeText = 'Second AI review marked the email unsafe to send.';
             validation.issues.push(unsafeText);
@@ -70,7 +77,8 @@ function generateEmailRows_(rows) {
           result: validation.safeToDraft ? 'Success' : 'Blocked',
           details: 'Quality ' + validation.score + '; ' + validation.wordCount + ' words; alternatives: ' + email.subject_alternatives.join(' | ')
         });
-        existingBodies.push(email.body_plain_text);
+        existingBodyRecords = existingBodyRecords.filter(function(record) { return record.rowNumber !== lead._rowNumber; });
+        existingBodyRecords.push({ rowNumber: lead._rowNumber, body: email.body_plain_text });
         summary.processed++;
         if (!validation.safeToDraft) summary.blocked++;
       } catch (error) {
@@ -83,6 +91,12 @@ function generateEmailRows_(rows) {
   } finally {
     lock.releaseLock();
   }
+}
+
+function otherLeadBodies_(records, rowNumber) {
+  return (records || []).filter(function(record) {
+    return Number(record.rowNumber) !== Number(rowNumber);
+  }).map(function(record) { return record.body; }).filter(function(body) { return body; });
 }
 
 function shouldRunSecondAiQualityCheck_(validation, email, config) {
@@ -101,7 +115,8 @@ function runSecondAiEmailQualityCheck_(lead, email) {
     'Subject: ' + email.subject,
     'Body: ' + email.body_plain_text,
     '',
-    'Flag unsupported claims, wrong names, generic personalization, multiple projects, aggressive CTA, fake compliments, invented metrics/case studies, and internal-system assumptions. A reasonable workflow possibility is allowed only when phrased as a possibility.'
+    'Flag unsupported claims, wrong names, generic personalization, multiple projects, aggressive CTA, fake compliments, invented metrics/case studies, and internal-system assumptions. A reasonable workflow possibility is allowed only when phrased as a possibility.',
+    'Scoring rubric: 90-100 means safe, grounded, specific, and compliant. 80-89 means safe with only minor nonblocking issues. Use a score below 80 only when unsupported_claims or quality_issues names at least one concrete defect. If safe_to_send is true and both issue arrays are empty, the score must be 90-100.'
   ].join('\n');
   return callOpenAIJson_({
     schemaName: 'pixelate_email_quality_review',
@@ -138,15 +153,17 @@ function generateEmailForLead_(lead, config) {
     'Required structure:',
     'Hi ' + lead['First Name'] + ',',
     '',
-    '[One verified company-specific observation.]',
+    '[One verified company-specific observation that uses the exact company name "' + lead['Company'] + '".]',
     '',
-    '[One concise operational workflow possibility.]',
+    '[One concise operational workflow possibility using "could" or "may". Do not claim anything about current systems, processes, teams, ownership, integration, replacement, or migration.]',
     '',
-    'Pixelate builds [the one specific recommended portal/tool] that connects those workflows without requiring a complete system replacement.',
+    'Pixelate could build [the one specific recommended portal/tool and its evidence-grounded capabilities].',
     '',
     '[One low-pressure question.]',
     '',
-    'Rules: 65-' + config['Maximum email word count'] + ' words before signature and opt-out. Mention Pixelate no more than once. Use exactly one project idea. End with one question. No markdown, links, signature, em dashes, fake compliments, aggressive CTA, invented metrics, unsupported internal-system claims, or generic opening. Generate two alternative subjects in addition to the selected subject. Do not use Re: or Fwd: on first contact.',
+    'Rules: 65-' + config['Maximum email word count'] + ' words before signature and opt-out. Use the exact company name at least once. Mention Pixelate no more than once. Use exactly one project idea. End with one question. Never claim that existing or current resources, systems, processes, teams, or tools will remain unchanged. Never make an integration, replacement, migration, or implementation claim. Do not use "without changing," "without replacing," or similar language. No markdown, links, signature, em dashes, fake compliments, aggressive CTA, invented metrics, unsupported internal-system claims, internal-team assumptions, or generic opening. Generate two alternative subjects in addition to the selected subject. Do not use Re: or Fwd: on first contact.',
+    'Structured-output rule: research_claims_used must contain only exact verbatim copies of Verified evidence 1 and/or Verified evidence 2. Do not put project hypotheses, paraphrases, or any other claim in that array.',
+    'Scoring rule: use quality_score 90-100 when every rule is met. Use a score below 80 only when quality_issues names a concrete defect, and set safe_to_send false for any blocking defect.',
     allowedCaseStudy ? 'The only approved case-study language is: ' + config['Approved case-study text'] : 'Do not mention any case study or customer.'
   ].join('\n');
   var response = callOpenAIJson_({
