@@ -14,9 +14,9 @@ Current deployment status:
 - the supplied Apollo export is loaded as 147 unique contacts;
 - the Gmail sender identity, reply-to, test address, and signature are configured;
 - `gpt-5.6-luna` with `low` reasoning is active;
-- Test mode is on, automatic sending is off, follow-ups are off, and no emails have been sent;
+- Test mode is off and production recipient targeting is enabled; automatic sending is off, follow-ups are off, all leads are unapproved, and no emails have been sent;
 - the OpenAI API key is configured and has passed live research and generation checks;
-- the physical mailing address still requires private operator input before production sending.
+- the configured mailing-location footer is `Shelby Township, MI 48316`.
 
 ## 1. Enable Apps Script API access
 

@@ -2,9 +2,9 @@
 
 Pixelate Outbound Assistant is a container-bound Google Apps Script project for researched, approval-based Gmail outreach from Google Sheets. Apollo is used only as the original CSV source. The application does not use Apollo for research, enrichment, sequencing, drafting, or sending.
 
-The verified native workbook is [Pixelate Outbound Assistant](https://docs.google.com/spreadsheets/d/1HFYt7STSJIYV3D_FgmBNjbaZ5utdJPbp48p0-Nhw7qo/edit). The supplied Apollo export has been mapped, deduplicated, and loaded as 147 contacts while Test mode remains enabled.
+The verified native workbook is [Pixelate Outbound Assistant](https://docs.google.com/spreadsheets/d/1HFYt7STSJIYV3D_FgmBNjbaZ5utdJPbp48p0-Nhw7qo/edit). The supplied Apollo export has been mapped, deduplicated, and loaded as 147 contacts. Production recipient targeting is enabled, while automatic sending remains off and every lead remains unapproved.
 
-## Safety defaults
+## Initial safety defaults
 
 - Test mode is on.
 - Automatic sending is off.
