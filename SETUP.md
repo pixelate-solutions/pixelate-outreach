@@ -4,7 +4,18 @@ The native Google Sheet is:
 
 https://docs.google.com/spreadsheets/d/1HFYt7STSJIYV3D_FgmBNjbaZ5utdJPbp48p0-Nhw7qo/edit
 
-It already contains the required tabs, formatting, dashboard formulas, a native Leads table, dropdown columns, checkbox/boolean columns, and the `America/Detroit` timezone. The remaining deployment step requires your Google authorization because a bound Apps Script project cannot be created or pushed on your behalf without `clasp` OAuth.
+It contains the required tabs, formatting, dashboard formulas, a native Leads table, dropdown columns, checkbox/boolean columns, and the `America/Detroit` timezone.
+
+Current deployment status:
+
+- clasp is authenticated and bound to this exact spreadsheet;
+- all 27 Apps Script source files are pushed;
+- the workbook is authorized and initialized;
+- the supplied Apollo export is loaded as 147 unique contacts;
+- the Gmail sender identity, reply-to, test address, and signature are configured;
+- `gpt-5.6-luna` with `low` reasoning is active;
+- Test mode is on, automatic sending is off, follow-ups are off, and no emails have been sent;
+- the OpenAI API key and physical mailing address still require private operator input before AI research or production sending.
 
 ## 1. Enable Apps Script API access
 
@@ -20,7 +31,7 @@ npm install
 npx clasp login
 ```
 
-Complete the Google OAuth flow using the same account that owns the Sheet. The repository currently reports `Not logged in` from `npx clasp show-authorized-user`, so this step is required.
+Complete the Google OAuth flow using the same account that owns the Sheet. The current local binding is already authenticated; use this step only when reauthorizing on another machine or account.
 
 ## 3. Create the container-bound Apps Script project
 
@@ -28,13 +39,12 @@ Run exactly:
 
 ```bash
 npx clasp create \
-  --type sheets \
   --title "Pixelate Outbound Assistant" \
   --parentId 1HFYt7STSJIYV3D_FgmBNjbaZ5utdJPbp48p0-Nhw7qo \
   --rootDir src
 ```
 
-This creates `.clasp.json` locally. Do not commit that file if the script ID is private.
+This creates `.clasp.json` locally. Do not commit that file if the script ID is private. Do not add `--type sheets` when binding to this existing spreadsheet; that option creates a separate spreadsheet instead.
 
 If you instead create the bound project manually with **Extensions → Apps Script**, copy `.clasp.json.example` to `.clasp.json`, paste the bound Script ID from **Project Settings**, and keep `"rootDir": "src"`.
 
@@ -59,7 +69,7 @@ No web-app deployment is required; this is a spreadsheet-bound application.
 
 ## 6. Authorize and initialize
 
-Reload the Sheet. The **Pixelate Outreach** menu should appear. Choose **Initialize Workbook** and accept the requested Google scopes. Initialization preserves imported/workflow data and repairs missing structure.
+This authorization and initialization are complete. For a rebuild, reload the Sheet, choose **Pixelate Outreach → Initialize Workbook**, and accept the requested Google scopes. Initialization preserves imported/workflow data and repairs missing structure.
 
 The scopes are declared in `src/appsscript.json`:
 
@@ -73,7 +83,7 @@ The scopes are declared in `src/appsscript.json`:
 
 In the Sheet choose **Pixelate Outreach → Secure API Key & Signature**. Paste the API key and save. The key is written to Script Properties under `OPENAI_API_KEY`; the raw value never appears in a spreadsheet cell or log.
 
-The default model is `gpt-5.6-sol`, configured once in the Configuration tab. Change that cell if your OpenAI project uses another compatible structured-output model.
+The default model is `gpt-5.6-luna`, configured once in the Configuration tab. Change that cell if your OpenAI project uses another compatible structured-output model.
 
 ## 8. Configure sender and signature
 
@@ -91,7 +101,7 @@ Then use **Pixelate Outreach → Load Signature from Gmail**. The service reads 
 
 ## 9. Import the Apollo CSV
 
-Choose **Pixelate Outreach → Import Apollo CSV**, select `/Users/morrison/Downloads/apollo-contacts-export.csv`, review the preview, and confirm.
+The initial `/Users/morrison/Downloads/apollo-contacts-export.csv` has been imported. For later exports, choose **Pixelate Outreach → Import Apollo CSV**, review the preview, and confirm.
 
 The importer:
 
@@ -182,4 +192,3 @@ removeAllPixelateTriggers()
 ```
 
 Then delete unwanted Gmail drafts, remove or delete the bound Apps Script project, and delete the Sheet if appropriate. Deleting the script removes Script Properties, including the OpenAI API key. You can also run `npx clasp logout` to remove the local clasp authorization.
-

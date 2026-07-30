@@ -2,7 +2,7 @@
 
 Pixelate Outbound Assistant is a container-bound Google Apps Script project for researched, approval-based Gmail outreach from Google Sheets. Apollo is used only as the original CSV source. The application does not use Apollo for research, enrichment, sequencing, drafting, or sending.
 
-The verified native workbook is [Pixelate Outbound Assistant](https://docs.google.com/spreadsheets/d/1HFYt7STSJIYV3D_FgmBNjbaZ5utdJPbp48p0-Nhw7qo/edit). It is intentionally empty of live contacts. Import the supplied Apollo CSV through the application after the script is bound and authorized.
+The verified native workbook is [Pixelate Outbound Assistant](https://docs.google.com/spreadsheets/d/1HFYt7STSJIYV3D_FgmBNjbaZ5utdJPbp48p0-Nhw7qo/edit). The supplied Apollo export has been mapped, deduplicated, and loaded as 147 contacts while Test mode remains enabled.
 
 ## Safety defaults
 
@@ -105,4 +105,3 @@ The software includes accurate sender fields, configurable reply-to, opt-out tex
 ## Uninstall
 
 Run `removeAllPixelateTriggers()` from the Apps Script editor, delete any Gmail drafts you no longer want, remove the bound Apps Script project through **Extensions → Apps Script → Project Settings/Delete project** as permitted by Google, and delete the Sheet if it is no longer required. Deleting the script removes its Script Properties, including the OpenAI key.
-

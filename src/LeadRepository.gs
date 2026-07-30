@@ -65,7 +65,9 @@ function applyLeadRowControls_(startRow, rowCount) {
   var sheet = getLeadsSheet_();
   var map = getLeadHeaderMap_();
   ['Approved', 'Do Not Contact', 'Follow-Up Approved', 'Is Test Record'].forEach(function(header) {
-    sheet.getRange(startRow, map[header], rowCount, 1).insertCheckboxes();
+    applyUnlessNativeTableBlocks_(function() {
+      sheet.getRange(startRow, map[header], rowCount, 1).insertCheckboxes();
+    });
   });
 }
 

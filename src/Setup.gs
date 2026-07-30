@@ -118,7 +118,7 @@ function formatWorkbook_() {
     sheet.setRowHeight(1, 32);
     var hasNativeTable = false;
     try { hasNativeTable = typeof sheet.getTables === 'function' && sheet.getTables().length > 0; } catch (ignored) {}
-    if (sheet.getLastRow() > 1 && !sheet.getFilter() && !hasNativeTable && name !== 'Dashboard' && name !== 'Configuration' && name !== 'Templates') {
+    if (sheet.getLastRow() > 1 && !sheet.getFilter() && !hasNativeTable && name !== 'Leads' && name !== 'Dashboard' && name !== 'Configuration' && name !== 'Templates') {
       sheet.getRange(1, 1, sheet.getMaxRows(), lastColumn).createFilter();
     }
   });
@@ -131,7 +131,9 @@ function formatWorkbook_() {
     leads.getRange(2, leadMap[header], leads.getMaxRows() - 1, 1).setWrap(true);
   });
   ['Approved', 'Do Not Contact', 'Follow-Up Approved', 'Is Test Record'].forEach(function(header) {
-    leads.getRange(2, leadMap[header], leads.getMaxRows() - 1, 1).insertCheckboxes();
+    applyUnlessNativeTableBlocks_(function() {
+      leads.getRange(2, leadMap[header], leads.getMaxRows() - 1, 1).insertCheckboxes();
+    });
   });
   addLeadValidations_(leads, leadMap);
   addLeadConditionalFormatting_(leads, leadMap);
@@ -140,31 +142,31 @@ function formatWorkbook_() {
   leads.setColumnWidth(leadMap['Research Summary'], 340);
   leads.setColumnWidth(leadMap['Email Body'], 420);
   leads.setColumnWidth(leadMap['Last Error'], 260);
-  leads.getRange(2, leadMap['Sent At'], leads.getMaxRows() - 1, 1).setNumberFormat('yyyy-mm-dd hh:mm');
-  leads.getRange(2, leadMap['Replied At'], leads.getMaxRows() - 1, 1).setNumberFormat('yyyy-mm-dd hh:mm');
-  leads.getRange(2, leadMap['Follow-Up Due'], leads.getMaxRows() - 1, 1).setNumberFormat('yyyy-mm-dd');
-  leads.getRange(2, leadMap['Last Updated'], leads.getMaxRows() - 1, 1).setNumberFormat('yyyy-mm-dd hh:mm');
+  applyUnlessNativeTableBlocks_(function() { leads.getRange(2, leadMap['Sent At'], leads.getMaxRows() - 1, 1).setNumberFormat('yyyy-mm-dd hh:mm'); });
+  applyUnlessNativeTableBlocks_(function() { leads.getRange(2, leadMap['Replied At'], leads.getMaxRows() - 1, 1).setNumberFormat('yyyy-mm-dd hh:mm'); });
+  applyUnlessNativeTableBlocks_(function() { leads.getRange(2, leadMap['Follow-Up Due'], leads.getMaxRows() - 1, 1).setNumberFormat('yyyy-mm-dd'); });
+  applyUnlessNativeTableBlocks_(function() { leads.getRange(2, leadMap['Last Updated'], leads.getMaxRows() - 1, 1).setNumberFormat('yyyy-mm-dd hh:mm'); });
   leads.getRange(1, 1, 1, LEAD_HEADERS.length).setNotes([LEAD_HEADERS.map(function(header) { return leadColumnNote_(header); })]);
 
   var config = spreadsheet.getSheetByName('Configuration');
   config.setColumnWidth(1, 260);
   config.setColumnWidth(2, 320);
   config.setColumnWidth(3, 520);
-  config.getRange(2, 2, Math.max(config.getLastRow() - 1, 1), 1).setBackground(paleYellow);
-  config.getRange(2, 3, Math.max(config.getLastRow() - 1, 1), 1).setBackground(paleBlue).setWrap(true);
+  applyUnlessNativeTableBlocks_(function() { config.getRange(2, 2, Math.max(config.getLastRow() - 1, 1), 1).setBackground(paleYellow); });
+  applyUnlessNativeTableBlocks_(function() { config.getRange(2, 3, Math.max(config.getLastRow() - 1, 1), 1).setBackground(paleBlue).setWrap(true); });
 
   var templates = spreadsheet.getSheetByName('Templates');
   templates.setColumnWidth(1, 240);
   templates.setColumnWidth(2, 780);
-  templates.getRange(2, 2, Math.max(templates.getLastRow() - 1, 1), 1).setBackground(paleYellow).setWrap(true);
+  applyUnlessNativeTableBlocks_(function() { templates.getRange(2, 2, Math.max(templates.getLastRow() - 1, 1), 1).setBackground(paleYellow).setWrap(true); });
 
   var dashboard = spreadsheet.getSheetByName('Dashboard');
   dashboard.setColumnWidth(1, 260);
   dashboard.setColumnWidth(2, 160);
-  dashboard.getRange('A2:B19').setBorder(false, false, false, false, true, true, '#D8E1E8', SpreadsheetApp.BorderStyle.SOLID);
-  dashboard.getRange('A2:A19').setFontWeight('bold').setBackground(paleBlue);
-  dashboard.getRange('B2:B19').setFontSize(14).setFontWeight('bold').setFontColor(blue);
-  dashboard.getRange('B18:B19').setNumberFormat('0.0%');
+  applyUnlessNativeTableBlocks_(function() { dashboard.getRange('A2:B19').setBorder(false, false, false, false, true, true, '#D8E1E8', SpreadsheetApp.BorderStyle.SOLID); });
+  applyUnlessNativeTableBlocks_(function() { dashboard.getRange('A2:A19').setFontWeight('bold').setBackground(paleBlue); });
+  applyUnlessNativeTableBlocks_(function() { dashboard.getRange('B2:B19').setFontSize(14).setFontWeight('bold').setFontColor(blue); });
+  applyUnlessNativeTableBlocks_(function() { dashboard.getRange('B18:B19').setNumberFormat('0.0%'); });
 
   spreadsheet.getSheetByName('Activity Log').setColumnWidth(7, 420);
   spreadsheet.getSheetByName('Do Not Contact').setColumnWidth(7, 360);
@@ -183,18 +185,30 @@ function addLeadValidations_(sheet, map) {
   };
   Object.keys(options).forEach(function(header) {
     var rule = SpreadsheetApp.newDataValidation().requireValueInList(options[header], true).setAllowInvalid(false).build();
-    sheet.getRange(2, map[header], sheet.getMaxRows() - 1, 1).setDataValidation(rule);
+    applyUnlessNativeTableBlocks_(function() {
+      sheet.getRange(2, map[header], sheet.getMaxRows() - 1, 1).setDataValidation(rule);
+    });
   });
 }
 
+function applyUnlessNativeTableBlocks_(operation) {
+  try {
+    operation();
+  } catch (error) {
+    if (String(error && error.message || error).indexOf('typed column') === -1) throw error;
+  }
+}
+
 function addLeadConditionalFormatting_(sheet, map) {
-  var rules = sheet.getConditionalFormatRules().filter(function(rule) { return false; });
-  rules.push(SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('High').setBackground('#D9EAD3').setRanges([sheet.getRange(2, map['Fit Level'], sheet.getMaxRows() - 1, 1)]).build());
-  rules.push(SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('Medium').setBackground('#FFF2CC').setRanges([sheet.getRange(2, map['Fit Level'], sheet.getMaxRows() - 1, 1)]).build());
-  rules.push(SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('Low').setBackground('#F4CCCC').setRanges([sheet.getRange(2, map['Fit Level'], sheet.getMaxRows() - 1, 1)]).build());
-  rules.push(SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('Replied').setBackground('#D9EAD3').setRanges([sheet.getRange(2, map['Reply Status'], sheet.getMaxRows() - 1, 1)]).build());
-  rules.push(SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=LEN($' + columnLetter_(map['Last Error']) + '2)>0').setBackground('#F4CCCC').setRanges([sheet.getRange(2, map['Last Error'], sheet.getMaxRows() - 1, 1)]).build());
-  sheet.setConditionalFormatRules(rules);
+  applyUnlessNativeTableBlocks_(function() {
+    var rules = sheet.getConditionalFormatRules().filter(function(rule) { return false; });
+    rules.push(SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('High').setBackground('#D9EAD3').setRanges([sheet.getRange(2, map['Fit Level'], sheet.getMaxRows() - 1, 1)]).build());
+    rules.push(SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('Medium').setBackground('#FFF2CC').setRanges([sheet.getRange(2, map['Fit Level'], sheet.getMaxRows() - 1, 1)]).build());
+    rules.push(SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('Low').setBackground('#F4CCCC').setRanges([sheet.getRange(2, map['Fit Level'], sheet.getMaxRows() - 1, 1)]).build());
+    rules.push(SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('Replied').setBackground('#D9EAD3').setRanges([sheet.getRange(2, map['Reply Status'], sheet.getMaxRows() - 1, 1)]).build());
+    rules.push(SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=LEN($' + columnLetter_(map['Last Error']) + '2)>0').setBackground('#F4CCCC').setRanges([sheet.getRange(2, map['Last Error'], sheet.getMaxRows() - 1, 1)]).build());
+    sheet.setConditionalFormatRules(rules);
+  });
 }
 
 function leadColumnNote_(header) {

@@ -81,4 +81,3 @@ function handleReviewAction(action, rowNumber) {
   }
   return getReviewLead(lead._rowNumber);
 }
-

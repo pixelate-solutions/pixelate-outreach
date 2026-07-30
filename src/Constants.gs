@@ -47,7 +47,7 @@ const CACHE_HEADERS = Object.freeze(['Domain', 'Company', 'Research JSON', 'Upda
 
 const DEFAULT_CONFIG = Object.freeze({
   'OpenAI API key status': 'Missing',
-  'OpenAI model': 'gpt-5.6-sol',
+  'OpenAI model': 'gpt-5.6-luna',
   'OpenAI reasoning effort': 'low',
   'Research enabled': true,
   'Maximum leads per research batch': 10,
