@@ -96,10 +96,10 @@ function upsertInitialDraft_(lead, config) {
   var draft;
   var existingDraft = draftId ? gmailDraftExists_(draftId) : false;
   if (draftMutationPlan_(draftId, existingDraft) === 'update') {
-    draft = Gmail.Users.Drafts.update(resource, 'me', draftId);
+    draft = saveGmailDraft_(draftId, resource);
     updated = true;
   } else {
-    draft = Gmail.Users.Drafts.create(resource, 'me');
+    draft = saveGmailDraft_('', resource);
   }
   return { draftId: draft.id, messageId: draft.message && draft.message.id, threadId: draft.message && draft.message.threadId, updated: updated };
 }
@@ -211,12 +211,46 @@ function configuredFromEmail_(config) {
 
 function gmailDraftExists_(draftId) {
   try {
-    Gmail.Users.Drafts.get('me', draftId, { format: 'minimal' });
+    gmailApiRequest_('get', 'drafts/' + encodeURIComponent(draftId) + '?format=minimal');
     return true;
   } catch (error) {
-    if (/404|not found|Invalid draft/i.test(error.message)) return false;
+    if (Number(error.statusCode) === 404 || /404|not found|Invalid draft/i.test(error.message)) return false;
     throw error;
   }
+}
+
+function saveGmailDraft_(draftId, resource) {
+  var id = normalizeWhitespace_(draftId);
+  return gmailApiRequest_(id ? 'put' : 'post', id ? 'drafts/' + encodeURIComponent(id) : 'drafts', resource);
+}
+
+function sendExistingGmailDraft_(draftId) {
+  var id = normalizeWhitespace_(draftId);
+  if (!id) throw new Error('A Gmail draft ID is required before sending.');
+  return gmailApiRequest_('post', 'drafts/send', { id: id });
+}
+
+function gmailApiRequest_(method, path, payload) {
+  var options = {
+    method: String(method || 'get').toLowerCase(),
+    headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
+    muteHttpExceptions: true
+  };
+  if (payload !== undefined) {
+    options.contentType = 'application/json; charset=UTF-8';
+    options.payload = JSON.stringify(payload);
+  }
+  var response = UrlFetchApp.fetch('https://gmail.googleapis.com/gmail/v1/users/me/' + String(path || '').replace(/^\/+/, ''), options);
+  var status = response.getResponseCode();
+  var body = response.getContentText();
+  var parsed = safeJsonParse_(body, {});
+  if (status < 200 || status >= 300) {
+    var message = parsed && parsed.error && parsed.error.message ? parsed.error.message : (body || 'Unknown Gmail API error');
+    var error = new Error('Gmail API request failed (' + status + '): ' + truncate_(message, 500));
+    error.statusCode = status;
+    throw error;
+  }
+  return parsed;
 }
 
 function createOrUpdateFollowUpDraft_(lead, config) {
@@ -226,9 +260,9 @@ function createOrUpdateFollowUpDraft_(lead, config) {
   var draft;
   var updated = false;
   if (draftId && gmailDraftExists_(draftId)) {
-    draft = Gmail.Users.Drafts.update(resource, 'me', draftId);
+    draft = saveGmailDraft_(draftId, resource);
     updated = true;
-  } else draft = Gmail.Users.Drafts.create(resource, 'me');
+  } else draft = saveGmailDraft_('', resource);
   updateLeadRow_(lead._rowNumber, { 'Follow-Up Draft ID': draft.id, 'Follow-Up Status': 'Draft Created', 'Last Updated': new Date() });
   logActivity_({ lead: lead, action: updated ? 'Update Follow-Up Draft' : 'Create Follow-Up Draft', result: 'Success', draftId: draft.id });
   return draft;

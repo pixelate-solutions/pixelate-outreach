@@ -29,7 +29,7 @@ No email was sent while this project was built or tested.
 6. Applies deterministic quality checks for evidence, confidence, names, length, placeholders, em dashes, buzzwords, unsupported claims, case studies, and batch similarity.
 7. Provides a one-lead-at-a-time review sidebar.
 8. Retrieves an authorized Gmail send-as signature or accepts pasted HTML and plain text.
-9. Creates or updates MIME multipart Gmail drafts idempotently through the Gmail advanced service.
+9. Creates or updates MIME multipart Gmail drafts idempotently through Gmail's authenticated JSON API.
 10. Sends only explicitly approved and confirmed messages inside configured windows and daily limits.
 11. Detects and classifies replies, suppresses opt-outs, and stops follow-ups.
 12. Generates at most two approval-required follow-ups, disabled by default.
@@ -94,6 +94,7 @@ After setup:
 - Per-row failures are logged and do not stop a batch.
 - OpenAI and website requests retry transient failures with exponential backoff.
 - Long research and send batches create continuation triggers.
+- The send confirmation stays open with live processed, sent, failed, pending, and scheduled counts, plus a direct Activity Log button.
 - Existing Gmail draft IDs are checked and updated instead of duplicated.
 - Every send gate is re-evaluated immediately before sending.
 - A confirmed send continuation expires after 24 hours and rechecks Test mode, daily limits, Do Not Contact, and send windows.

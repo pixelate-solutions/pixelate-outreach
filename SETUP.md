@@ -158,6 +158,8 @@ Before production:
 7. Choose **Send Approved Emails** and inspect the confirmation list.
 8. Confirm only if recipients, companies, sender, and count are correct.
 
+After confirmation, keep the dialog open to see live processed, sent, failed, pending, and scheduled counts. Sending continues if you close it; use **View Activity Log** in the result panel for the permanent per-recipient audit trail.
+
 The default daily limit is 10, Monday-Friday, 09:00-16:30 America/Detroit. Each send is revalidated immediately beforehand.
 
 ## 14. Replies and follow-ups

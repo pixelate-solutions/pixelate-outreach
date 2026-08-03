@@ -110,8 +110,22 @@ function mergeImportedLead_(rowNumber, imported) {
 
 function refreshCompanyOutreachWarnings_() {
   var leads = getAllLeads_();
+  if (!leads.length) return;
+  var warnings = companyOutreachWarnings_(leads);
+  var sheet = getLeadsSheet_();
+  var column = getLeadHeaderMap_()['Company Outreach Warning'];
+  var rowCount = sheet.getLastRow() - 1;
+  var values = [];
+  for (var i = 0; i < rowCount; i++) values.push(['']);
+  leads.forEach(function(lead) { values[lead._rowNumber - 2][0] = warnings[lead._rowNumber] || ''; });
+  sheet.getRange(2, column, rowCount, 1).setValues(values);
+}
+
+function companyOutreachWarnings_(leads) {
   var byDomain = {};
+  var warnings = {};
   leads.forEach(function(lead) {
+    warnings[lead._rowNumber] = '';
     var domain = normalizeDomain_(lead['Company Domain']);
     if (!domain) return;
     if (!byDomain[domain]) byDomain[domain] = [];
@@ -122,12 +136,11 @@ function refreshCompanyOutreachWarnings_() {
       return lead['Send Status'] === 'Sent' || lead['Draft Status'] === 'Created' || lead['Draft Status'] === 'Updated' || lead['Approved'] === true;
     });
     byDomain[domain].forEach(function(lead) {
-      var others = active.filter(function(other) { return other['Lead ID'] !== lead['Lead ID']; });
-      updateLeadRow_(lead._rowNumber, {
-        'Company Outreach Warning': others.length ? 'Warning: ' + others.length + ' other active contact(s) at this company.' : ''
-      });
+      var otherCount = active.filter(function(other) { return other['Lead ID'] !== lead['Lead ID']; }).length;
+      warnings[lead._rowNumber] = otherCount ? 'Warning: ' + otherCount + ' other active contact(s) at this company.' : '';
     });
   });
+  return warnings;
 }
 
 function hasPreviousSend_(lead) {

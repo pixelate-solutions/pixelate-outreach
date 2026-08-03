@@ -1,4 +1,5 @@
 function showSendConfirmation() {
+  cleanupStaleSendState_();
   var config = getConfig_();
   if (config['Test mode'] === true) throw new Error('Sending is disabled while Test mode is enabled.');
   if (!isValidEmail_(configuredFromEmail_(config))) throw new Error('Configure a valid default sender Gmail address or authorized alias before sending.');
@@ -8,10 +9,21 @@ function showSendConfirmation() {
   if (remaining <= 0) throw new Error('The daily send limit has already been reached.');
   candidates = candidates.slice(0, remaining);
   var token = Utilities.getUuid();
+  var createdAt = Date.now();
   PropertiesService.getUserProperties().setProperty(SEND_CONFIRMATION_PREFIX + token, JSON.stringify({
-    createdAt: Date.now(),
+    createdAt: createdAt,
     items: candidates.map(function(candidate) { return { row: candidate.lead._rowNumber, type: candidate.type }; })
   }));
+  writeSendProgress_(token, {
+    status: 'ready',
+    total: candidates.length,
+    processed: 0,
+    sent: 0,
+    failed: 0,
+    scheduled: 0,
+    createdAt: createdAt,
+    message: 'Ready for confirmation.'
+  });
   var template = HtmlService.createTemplateFromFile('ConfirmationDialog');
   template.data = {
     token: token,
@@ -22,92 +34,151 @@ function showSendConfirmation() {
       return { recipient: candidate.lead['Email'], company: candidate.lead['Company'], type: candidate.type };
     })
   };
-  SpreadsheetApp.getUi().showModalDialog(template.evaluate().setWidth(620).setHeight(560), 'Confirm Approved Send');
+  SpreadsheetApp.getUi().showModalDialog(template.evaluate().setWidth(650).setHeight(640), 'Confirm Approved Send');
 }
 
 function confirmSendBatch(token) {
+  token = String(token || '');
   var property = SEND_CONFIRMATION_PREFIX + String(token || '');
-  var json = PropertiesService.getUserProperties().getProperty(property);
-  if (!json) throw new Error('This confirmation expired. Open Send Approved Emails again.');
-  PropertiesService.getUserProperties().deleteProperty(property);
-  var request = safeJsonParse_(json, null);
-  if (!request || Date.now() - Number(request.createdAt) > 10 * 60 * 1000) throw new Error('This confirmation expired.');
-  var config = getConfig_();
-  if (config['Test mode'] === true) throw new Error('Sending is disabled in Test mode.');
-  if (!isWithinSendWindow_(new Date(), config)) throw new Error('Current time is outside the configured send days/hours.');
-  var lock = LockService.getDocumentLock();
-  if (!lock.tryLock(30000)) throw new Error('Another draft or send operation is running.');
-  var summary = { sent: 0, failed: 0 };
+  var lock = null;
   try {
+    var json = PropertiesService.getUserProperties().getProperty(property);
+    if (!json) throw new Error('This confirmation expired. Open Send Approved Emails again.');
+    PropertiesService.getUserProperties().deleteProperty(property);
+    var request = safeJsonParse_(json, null);
+    if (!request || Date.now() - Number(request.createdAt) > 10 * 60 * 1000) throw new Error('This confirmation expired.');
+    var config = getConfig_();
+    if (config['Test mode'] === true) throw new Error('Sending is disabled in Test mode.');
+    if (!isWithinSendWindow_(new Date(), config)) throw new Error('Current time is outside the configured send days/hours.');
+    lock = LockService.getDocumentLock();
+    if (!lock.tryLock(30000)) throw new Error('Another draft or send operation is running.');
     var remaining = dailySendRemaining_(config, new Date());
+    if (remaining <= 0) throw new Error('The daily send limit has already been reached.');
     var items = request.items.slice(0, remaining);
-    summary = processConfirmedSendItems_(items, config, Date.now());
+    writeSendProgress_(token, {
+      status: 'running',
+      total: items.length,
+      processed: 0,
+      sent: 0,
+      failed: 0,
+      scheduled: 0,
+      createdAt: request.createdAt,
+      startedAt: Date.now(),
+      message: 'Starting approved send...'
+    });
+    var summary = processConfirmedSendItems_(items, config, Date.now(), token);
     refreshCompanyOutreachWarnings_();
     return summary;
+  } catch (error) {
+    var progress = readSendProgress_(token) || { total: 0, processed: 0, sent: 0, failed: 0, scheduled: 0, createdAt: Date.now() };
+    progress.status = 'failed';
+    progress.completedAt = Date.now();
+    progress.message = 'Sending stopped.';
+    progress.lastError = truncate_(error.message, 500);
+    writeSendProgress_(token, progress);
+    throw error;
   } finally {
-    lock.releaseLock();
+    if (lock) lock.releaseLock();
   }
 }
 
-function processConfirmedSendItems_(items, config, startedAt) {
+function processConfirmedSendItems_(items, config, startedAt, progressToken) {
   var summary = { sent: 0, failed: 0, scheduled: 0 };
+  var progress = readSendProgress_(progressToken) || {
+    status: 'running', total: items.length, processed: 0, sent: 0, failed: 0, scheduled: 0, createdAt: Date.now(), startedAt: startedAt
+  };
   for (var i = 0; i < items.length; i++) {
     if (isExecutionTimeLow_(startedAt, 260000)) {
       var remainder = items.slice(i);
-      PropertiesService.getScriptProperties().setProperty('SEND_CONTINUATION', JSON.stringify({ createdAt: Date.now(), items: remainder }));
+      PropertiesService.getScriptProperties().setProperty(SEND_CONTINUATION_PROPERTY, JSON.stringify({ createdAt: Date.now(), items: remainder, progressToken: progressToken }));
       scheduleContinuation_('continueSendBatch_', 2);
       summary.scheduled = remainder.length;
+      progress.status = 'scheduled';
+      progress.scheduled = remainder.length;
+      progress.message = 'The remaining emails are scheduled to continue in the background.';
+      writeSendProgress_(progressToken, progress);
       break;
     }
     var lead = getLeadByRow_(Number(items[i].row));
-    if (!lead) continue;
+    progress.status = 'running';
+    progress.current = progress.processed + 1;
+    progress.currentRecipient = lead ? lead['Email'] : 'Missing lead row ' + items[i].row;
+    progress.message = 'Processing email ' + progress.current + ' of ' + progress.total + '...';
+    writeSendProgress_(progressToken, progress);
+    if (!lead) {
+      summary.failed++;
+      progress.failed++;
+      progress.processed++;
+      progress.lastError = 'The lead row no longer exists.';
+      writeSendProgress_(progressToken, progress);
+      continue;
+    }
     try {
       if (items[i].type === 'follow_up') sendFollowUp_(lead, config);
       else sendInitial_(lead, config);
       summary.sent++;
+      progress.sent++;
+      progress.lastError = '';
       if (i < items.length - 1) sleepRandom_(700, 1600);
     } catch (error) {
       setLeadError_(lead, error, items[i].type === 'follow_up' ? 'Send Follow-Up' : 'Send Initial Email');
       summary.failed++;
+      progress.failed++;
+      progress.lastError = truncate_(error.message, 500);
     }
+    progress.processed++;
+    progress.scheduled = 0;
+    progress.message = 'Processed ' + progress.processed + ' of ' + progress.total + '.';
+    writeSendProgress_(progressToken, progress);
+  }
+  if (!summary.scheduled) {
+    progress.status = 'completed';
+    progress.currentRecipient = '';
+    progress.completedAt = Date.now();
+    progress.message = progress.failed ? 'Completed with some failures.' : 'Approved send completed.';
+    writeSendProgress_(progressToken, progress);
   }
   return summary;
 }
 
 function continueSendBatch_() {
-  var property = PropertiesService.getScriptProperties().getProperty('SEND_CONTINUATION');
+  var property = PropertiesService.getScriptProperties().getProperty(SEND_CONTINUATION_PROPERTY);
   if (!property) return { sent: 0, failed: 0, scheduled: 0 };
   var request = safeJsonParse_(property, null);
   if (!request || Date.now() - Number(request.createdAt) > 24 * 60 * 60 * 1000) {
-    PropertiesService.getScriptProperties().deleteProperty('SEND_CONTINUATION');
+    PropertiesService.getScriptProperties().deleteProperty(SEND_CONTINUATION_PROPERTY);
     throw new Error('Confirmed send continuation expired after 24 hours.');
   }
   var config = getConfig_();
   if (config['Test mode'] === true) {
-    PropertiesService.getScriptProperties().deleteProperty('SEND_CONTINUATION');
+    PropertiesService.getScriptProperties().deleteProperty(SEND_CONTINUATION_PROPERTY);
     throw new Error('Send continuation cancelled because Test mode is enabled.');
   }
   if (!isWithinSendWindow_(new Date(), config)) {
+    updateScheduledSendProgress_(request.progressToken, request.items.length, 'Waiting for the configured send window.');
     scheduleContinuation_('continueSendBatch_', 60);
     return { sent: 0, failed: 0, scheduled: request.items.length };
   }
   var lock = LockService.getDocumentLock();
   if (!lock.tryLock(30000)) {
+    updateScheduledSendProgress_(request.progressToken, request.items.length, 'Waiting for the active send operation to finish.');
     scheduleContinuation_('continueSendBatch_', 2);
     return { sent: 0, failed: 0, scheduled: request.items.length };
   }
   try {
     var remainingToday = dailySendRemaining_(config, new Date());
     if (remainingToday <= 0) {
+      updateScheduledSendProgress_(request.progressToken, request.items.length, 'Waiting for the next available daily send allowance.');
       scheduleContinuation_('continueSendBatch_', 60);
       return { sent: 0, failed: 0, scheduled: request.items.length };
     }
     var currentItems = request.items.slice(0, remainingToday);
     var futureItems = request.items.slice(remainingToday);
-    PropertiesService.getScriptProperties().deleteProperty('SEND_CONTINUATION');
-    var result = processConfirmedSendItems_(currentItems, config, Date.now());
-    if (futureItems.length && !PropertiesService.getScriptProperties().getProperty('SEND_CONTINUATION')) {
-      PropertiesService.getScriptProperties().setProperty('SEND_CONTINUATION', JSON.stringify({ createdAt: request.createdAt, items: futureItems }));
+    PropertiesService.getScriptProperties().deleteProperty(SEND_CONTINUATION_PROPERTY);
+    var result = processConfirmedSendItems_(currentItems, config, Date.now(), request.progressToken);
+    if (futureItems.length && !PropertiesService.getScriptProperties().getProperty(SEND_CONTINUATION_PROPERTY)) {
+      PropertiesService.getScriptProperties().setProperty(SEND_CONTINUATION_PROPERTY, JSON.stringify({ createdAt: request.createdAt, items: futureItems, progressToken: request.progressToken }));
+      updateScheduledSendProgress_(request.progressToken, futureItems.length, 'Waiting for the next available daily send allowance.');
       scheduleContinuation_('continueSendBatch_', 60);
       result.scheduled += futureItems.length;
     }
@@ -115,6 +186,49 @@ function continueSendBatch_() {
   } finally {
     lock.releaseLock();
   }
+}
+
+function getSendProgress(token) {
+  var progress = readSendProgress_(String(token || ''));
+  return progress || { status: 'not_found', total: 0, processed: 0, sent: 0, failed: 0, scheduled: 0, message: 'No progress record was found.' };
+}
+
+function readSendProgress_(token) {
+  if (!token) return null;
+  return safeJsonParse_(PropertiesService.getScriptProperties().getProperty(SEND_PROGRESS_PREFIX + token), null);
+}
+
+function writeSendProgress_(token, progress) {
+  if (!token || !progress) return;
+  progress.updatedAt = Date.now();
+  PropertiesService.getScriptProperties().setProperty(SEND_PROGRESS_PREFIX + token, JSON.stringify(progress));
+}
+
+function updateScheduledSendProgress_(token, count, message) {
+  var progress = readSendProgress_(token);
+  if (!progress) return;
+  progress.status = 'scheduled';
+  progress.scheduled = Number(count || 0);
+  progress.message = message;
+  writeSendProgress_(token, progress);
+}
+
+function cleanupStaleSendState_() {
+  var now = Date.now();
+  var scriptStore = PropertiesService.getScriptProperties();
+  var scriptValues = scriptStore.getProperties();
+  Object.keys(scriptValues).forEach(function(key) {
+    if (key.indexOf(SEND_PROGRESS_PREFIX) !== 0) return;
+    var value = safeJsonParse_(scriptValues[key], null);
+    if (!value || now - Number(value.createdAt || value.updatedAt || 0) > 3 * 86400000) scriptStore.deleteProperty(key);
+  });
+  var userStore = PropertiesService.getUserProperties();
+  var userValues = userStore.getProperties();
+  Object.keys(userValues).forEach(function(key) {
+    if (key.indexOf(SEND_CONFIRMATION_PREFIX) !== 0) return;
+    var value = safeJsonParse_(userValues[key], null);
+    if (!value || now - Number(value.createdAt || 0) > 60 * 60 * 1000) userStore.deleteProperty(key);
+  });
 }
 
 function collectSendCandidates_(config) {
@@ -146,7 +260,7 @@ function sendInitial_(lead, config) {
     var updated = upsertInitialDraft_(lead, config);
     draftId = updated.draftId;
   }
-  var message = Gmail.Users.Drafts.send({}, 'me', draftId);
+  var message = sendExistingGmailDraft_(draftId);
   var sentAt = new Date();
   var due = new Date(sentAt.getTime() + Number(config['Follow-up delay']) * 86400000);
   updateLeadRow_(lead._rowNumber, {
@@ -169,7 +283,7 @@ function sendFollowUp_(lead, config) {
   var draftId = normalizeWhitespace_(lead['Follow-Up Draft ID']);
   if (!draftId || !gmailDraftExists_(draftId)) draftId = createOrUpdateFollowUpDraft_(lead, config).id;
   else createOrUpdateFollowUpDraft_(lead, config);
-  var message = Gmail.Users.Drafts.send({}, 'me', draftId);
+  var message = sendExistingGmailDraft_(draftId);
   var sentAt = new Date();
   var count = Number(lead['Follow-Up Count'] || 0) + 1;
   var due = count < Number(config['Maximum follow-ups']) ? new Date(sentAt.getTime() + Number(config['Follow-up delay']) * 86400000) : '';

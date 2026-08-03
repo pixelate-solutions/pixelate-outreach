@@ -1,15 +1,122 @@
 <!doctype html>
-<html><head><base target="_top"><style>
-  body{font:14px/1.45 Arial,sans-serif;margin:0;color:#17324d}main{padding:22px}.warning{background:#fff2cc;border-left:4px solid #d6a800;padding:12px;margin:12px 0}.list{max-height:260px;overflow:auto;border:1px solid #d8e1e8;border-radius:6px}.item{padding:9px 11px;border-bottom:1px solid #e8eef2}.item:last-child{border:0}.muted{color:#597080}.actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}button{border:0;border-radius:6px;padding:10px 14px;cursor:pointer}.send{background:#9c1c1c;color:white}.cancel{background:#e8eef2}.error{color:#9c1c1c;white-space:pre-wrap}
-</style></head><body><main>
-  <h2>Confirm send</h2><div class="warning">This will send <strong id="count"></strong> email(s). This action is not a test and cannot be undone.</div>
-  <p>Sender: <strong id="sender"></strong><br>Daily limit: <strong id="limit"></strong></p><div id="items" class="list"></div><div id="error" class="error"></div>
-  <div class="actions"><button class="cancel" onclick="google.script.host.close()">Cancel</button><button id="send" class="send" onclick="confirmSend()">Send approved emails</button></div>
-</main><script>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    :root{--ink:#17324d;--muted:#597080;--line:#d8e1e8;--danger:#9c1c1c;--blue:#1769aa;--green:#247a43;--amber:#9a6800}
+    *{box-sizing:border-box}body{font:14px/1.45 Arial,sans-serif;margin:0;color:var(--ink);background:#fff}main{padding:22px}h2{margin:0 0 12px}
+    .warning{background:#fff2cc;border-left:4px solid #d6a800;padding:12px;margin:12px 0}.list{max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:6px}.item{padding:9px 11px;border-bottom:1px solid #e8eef2}.item:last-child{border:0}.muted{color:var(--muted)}
+    .progress-panel{display:none;margin-top:16px;padding:14px;border:1px solid var(--line);border-radius:8px;background:#f8fbfd}.progress-panel.visible{display:block}.status-line{display:flex;justify-content:space-between;gap:12px;align-items:center}.status-title{font-weight:700}.status-title.running{color:var(--blue)}.status-title.completed{color:var(--green)}.status-title.failed{color:var(--danger)}.status-title.scheduled{color:var(--amber)}
+    .track{height:10px;background:#dfe8ee;border-radius:999px;overflow:hidden;margin:10px 0}.bar{height:100%;width:0;background:var(--blue);transition:width .25s ease}.counts{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:10px}.count{padding:7px;background:#fff;border:1px solid #e4ebef;border-radius:6px;text-align:center}.count strong{display:block;font-size:17px}.detail{margin:8px 0 0}.error{color:var(--danger);white-space:pre-wrap;margin-top:8px}.actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}button{border:0;border-radius:6px;padding:10px 14px;cursor:pointer}button:disabled{cursor:not-allowed;opacity:.65}.send{background:var(--danger);color:white}.cancel{background:#e8eef2}.log{display:none;background:#dbeaf6;color:#124e78}.log.visible{display:inline-block}
+  </style>
+</head>
+<body>
+<main>
+  <h2>Confirm send</h2>
+  <div id="warning" class="warning">This will send <strong id="count"></strong> email(s). This action is not a test and cannot be undone.</div>
+  <p>Sender: <strong id="sender"></strong><br>Daily limit: <strong id="limit"></strong></p>
+  <div id="items" class="list"></div>
+  <section id="progress" class="progress-panel" aria-live="polite">
+    <div class="status-line"><span id="statusTitle" class="status-title running">Starting…</span><span id="fraction" class="muted">0 / 0</span></div>
+    <div class="track"><div id="bar" class="bar"></div></div>
+    <div id="detail" class="detail">Preparing the approved batch.</div>
+    <div class="counts">
+      <div class="count"><strong id="sentCount">0</strong>Sent</div>
+      <div class="count"><strong id="failedCount">0</strong>Failed</div>
+      <div class="count"><strong id="pendingCount">0</strong>Pending</div>
+      <div class="count"><strong id="scheduledCount">0</strong>Scheduled</div>
+    </div>
+    <div id="error" class="error"></div>
+  </section>
+  <div class="actions">
+    <button id="close" class="cancel" onclick="google.script.host.close()">Cancel</button>
+    <button id="log" class="log" onclick="openLog()">View Activity Log</button>
+    <button id="send" class="send" onclick="confirmSend()">Send approved emails</button>
+  </div>
+</main>
+<script>
   const data = <?!= JSON.stringify(data) ?>;
-  const esc = v => String(v == null ? '' : v).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
-  document.getElementById('count').textContent=data.count;document.getElementById('sender').textContent=data.sender;document.getElementById('limit').textContent=data.dailyLimit;
-  document.getElementById('items').innerHTML=data.items.map(i=>`<div class="item"><strong>${esc(i.recipient)}</strong><br><span class="muted">${esc(i.company)} · ${esc(i.type)}</span></div>`).join('');
-  function confirmSend(){document.getElementById('send').disabled=true;google.script.run.withSuccessHandler(result=>{document.getElementById('items').innerHTML=`Sent ${result.sent}; failed ${result.failed}.`;setTimeout(()=>google.script.host.close(),2200)}).withFailureHandler(error=>{document.getElementById('error').textContent=error.message||String(error);document.getElementById('send').disabled=false}).confirmSendBatch(data.token)}
-</script></body></html>
+  let pollTimer = null;
+  let pollInFlight = false;
+  const esc = value => String(value == null ? '' : value).replace(/[&<>'"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
+  const el = id => document.getElementById(id);
 
+  el('count').textContent = data.count;
+  el('sender').textContent = data.sender;
+  el('limit').textContent = data.dailyLimit;
+  el('items').innerHTML = data.items.map(item => `<div class="item"><strong>${esc(item.recipient)}</strong><br><span class="muted">${esc(item.company)} · ${esc(item.type)}</span></div>`).join('');
+
+  function confirmSend() {
+    el('send').disabled = true;
+    el('send').textContent = 'Sending…';
+    el('close').textContent = 'Close';
+    el('warning').style.display = 'none';
+    el('items').style.display = 'none';
+    el('progress').classList.add('visible');
+    renderProgress({status:'running', total:data.count, processed:0, sent:0, failed:0, scheduled:0, message:'Starting approved send…'});
+    pollProgress();
+    pollTimer = setInterval(pollProgress, 1000);
+    google.script.run
+      .withSuccessHandler(result => {
+        if (!result.scheduled) stopPolling();
+        pollProgress();
+      })
+      .withFailureHandler(error => {
+        stopPolling();
+        renderProgress({status:'failed', total:data.count, processed:0, sent:0, failed:0, scheduled:0, message:'Sending stopped.', lastError:error.message || String(error)});
+      })
+      .confirmSendBatch(data.token);
+  }
+
+  function pollProgress() {
+    if (pollInFlight) return;
+    pollInFlight = true;
+    google.script.run
+      .withSuccessHandler(progress => {
+        pollInFlight = false;
+        renderProgress(progress || {});
+        if (progress && (progress.status === 'completed' || progress.status === 'failed')) stopPolling();
+      })
+      .withFailureHandler(() => { pollInFlight = false; })
+      .getSendProgress(data.token);
+  }
+
+  function renderProgress(progress) {
+    const total = Number(progress.total || data.count || 0);
+    const processed = Math.min(total, Number(progress.processed || 0));
+    const sent = Number(progress.sent || 0);
+    const failed = Number(progress.failed || 0);
+    const scheduled = Number(progress.scheduled || 0);
+    const pending = Math.max(0, total - processed - scheduled);
+    const percent = total ? Math.round((processed / total) * 100) : 0;
+    const status = progress.status || 'running';
+    const labels = {ready:'Ready', running:'Sending in progress', completed:failed ? 'Completed with errors' : 'Send complete', failed:'Sending stopped', scheduled:'Continuing in background', not_found:'Progress unavailable'};
+    el('statusTitle').textContent = labels[status] || 'Sending';
+    el('statusTitle').className = `status-title ${status}`;
+    el('fraction').textContent = `${processed} / ${total}`;
+    el('bar').style.width = `${percent}%`;
+    el('bar').style.background = status === 'failed' ? 'var(--danger)' : (status === 'completed' ? 'var(--green)' : 'var(--blue)');
+    el('detail').textContent = progress.currentRecipient ? `${progress.message || ''} ${progress.currentRecipient}` : (progress.message || '');
+    el('sentCount').textContent = sent;
+    el('failedCount').textContent = failed;
+    el('pendingCount').textContent = pending;
+    el('scheduledCount').textContent = scheduled;
+    el('error').textContent = progress.lastError || '';
+    if (status === 'completed' || status === 'failed' || status === 'scheduled') el('log').classList.add('visible');
+    if (status === 'completed' || status === 'failed') {
+      el('send').style.display = 'none';
+      el('close').textContent = 'Close';
+    }
+  }
+
+  function stopPolling() {
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = null;
+  }
+
+  function openLog() {
+    google.script.run.withSuccessHandler(() => google.script.host.close()).viewActivityLog();
+  }
+</script>
+</body>
+</html>

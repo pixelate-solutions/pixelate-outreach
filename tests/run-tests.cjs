@@ -6,6 +6,16 @@ const path = require('path');
 const vm = require('vm');
 
 const root = path.resolve(__dirname, '..');
+const scriptProperties = new Map();
+const userProperties = new Map();
+function propertyStore(map) {
+  return {
+    getProperty(key) { return map.has(key) ? map.get(key) : null; },
+    setProperty(key, value) { map.set(key, String(value)); return this; },
+    deleteProperty(key) { map.delete(key); return this; },
+    getProperties() { return Object.fromEntries(map); }
+  };
+}
 const context = {
   console,
   Date,
@@ -37,6 +47,23 @@ const context = {
       return date.toISOString();
     }
   },
+  PropertiesService: {
+    getScriptProperties: () => propertyStore(scriptProperties),
+    getUserProperties: () => propertyStore(userProperties)
+  },
+  ScriptApp: { getOAuthToken: () => 'test-oauth-token' },
+  UrlFetchApp: {
+    fetch(url, options) {
+      context.__fetches.push({url, options});
+      const response = context.__fetchResponse || {status: 200, body: JSON.stringify({id:'r-new', message:{id:'m-new', threadId:'t-new'}})};
+      return {
+        getResponseCode: () => response.status,
+        getContentText: () => response.body
+      };
+    }
+  },
+  __fetches: [],
+  __fetchResponse: null,
   getConfig_: () => ({ 'Minimum research confidence': 65 }),
 };
 vm.createContext(context);
@@ -135,10 +162,62 @@ test('Do Not Contact enforcement matches email and domain', () => {
   assert.strictEqual(context.isDoNotContact_(lead,{emails:{},domains:{'acme.com':true},companies:{}}),true);
 });
 
+test('company outreach warnings count only other active contacts', () => {
+  const leads = [
+    {_rowNumber:2,'Lead ID':'a','Company Domain':'acme.com','Approved':true,'Send Status':'Not Sent','Draft Status':''},
+    {_rowNumber:3,'Lead ID':'b','Company Domain':'acme.com','Approved':true,'Send Status':'Not Sent','Draft Status':''},
+    {_rowNumber:4,'Lead ID':'c','Company Domain':'other.com','Approved':false,'Send Status':'Not Sent','Draft Status':''}
+  ];
+  const warnings = context.companyOutreachWarnings_(leads);
+  assert.ok(warnings[2].includes('1 other active'));
+  assert.ok(warnings[3].includes('1 other active'));
+  assert.strictEqual(warnings[4], '');
+});
+
 test('draft idempotency chooses update for an existing ID', () => {
   assert.strictEqual(context.draftMutationPlan_('draft-1',true),'update');
   assert.strictEqual(context.draftMutationPlan_('draft-1',false),'create');
   assert.strictEqual(context.draftMutationPlan_('',false),'create');
+});
+
+test('Gmail draft REST calls use JSON metadata endpoints and draft send payloads', () => {
+  context.__fetches.length = 0;
+  context.__fetchResponse = null;
+  context.saveGmailDraft_('', {message:{raw:'abc'}});
+  context.saveGmailDraft_('r-existing', {message:{raw:'def'}});
+  context.sendExistingGmailDraft_('r-existing');
+  assert.strictEqual(context.__fetches[0].options.method, 'post');
+  assert.ok(context.__fetches[0].url.endsWith('/users/me/drafts'));
+  assert.deepStrictEqual(JSON.parse(context.__fetches[0].options.payload), {message:{raw:'abc'}});
+  assert.strictEqual(context.__fetches[1].options.method, 'put');
+  assert.ok(context.__fetches[1].url.endsWith('/users/me/drafts/r-existing'));
+  assert.strictEqual(context.__fetches[2].options.method, 'post');
+  assert.ok(context.__fetches[2].url.endsWith('/users/me/drafts/send'));
+  assert.deepStrictEqual(JSON.parse(context.__fetches[2].options.payload), {id:'r-existing'});
+});
+
+test('Gmail REST failures preserve the HTTP status for missing-draft recovery', () => {
+  context.__fetchResponse = {status: 404, body: JSON.stringify({error:{message:'Draft not found'}})};
+  assert.strictEqual(context.gmailDraftExists_('r-missing'), false);
+  context.__fetchResponse = null;
+});
+
+test('send progress records round-trip for the confirmation dialog', () => {
+  context.writeSendProgress_('token-1', {status:'running', total:3, processed:1, sent:1, failed:0, scheduled:0});
+  const progress = context.getSendProgress('token-1');
+  assert.strictEqual(progress.status, 'running');
+  assert.strictEqual(progress.processed, 1);
+  assert.ok(progress.updatedAt > 0);
+});
+
+test('stale send progress and confirmations are cleaned up', () => {
+  scriptProperties.set('SEND_PROGRESS_old', JSON.stringify({createdAt:Date.now() - 4 * 86400000}));
+  scriptProperties.set('SEND_PROGRESS_current', JSON.stringify({createdAt:Date.now()}));
+  userProperties.set('SEND_CONFIRMATION_old', JSON.stringify({createdAt:Date.now() - 2 * 60 * 60 * 1000}));
+  context.cleanupStaleSendState_();
+  assert.strictEqual(scriptProperties.has('SEND_PROGRESS_old'), false);
+  assert.strictEqual(scriptProperties.has('SEND_PROGRESS_current'), true);
+  assert.strictEqual(userProperties.has('SEND_CONFIRMATION_old'), false);
 });
 
 test('daily send-limit calculation never goes negative', () => {

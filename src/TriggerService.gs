@@ -33,7 +33,7 @@ function clearProcessingLocks() {
   ScriptApp.getProjectTriggers().forEach(function(trigger) {
     if (handlers.indexOf(trigger.getHandlerFunction()) > -1) ScriptApp.deleteTrigger(trigger);
   });
-  PropertiesService.getScriptProperties().deleteProperty('SEND_CONTINUATION');
+  PropertiesService.getScriptProperties().deleteProperty(SEND_CONTINUATION_PROPERTY);
   logActivity_({ action: 'Clear Processing Locks', result: 'Success', details: count + ' row state(s) reset.' });
   SpreadsheetApp.getActive().toast(count + ' processing state(s) cleared.', APP_NAME, 5);
 }
