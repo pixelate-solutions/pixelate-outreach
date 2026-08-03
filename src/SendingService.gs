@@ -212,5 +212,26 @@ function isWithinSendWindow_(date, config) {
   var allowedDays = String(config['Send days'] || '').split(',').map(function(value) { return value.trim().toLowerCase(); });
   if (allowedDays.indexOf(day.toLowerCase()) === -1) return false;
   var current = Utilities.formatDate(date, timezone, 'HH:mm');
-  return current >= String(config['Send start time']) && current <= String(config['Send end time']);
+  var start = normalizeSendTime_(config['Send start time'], timezone);
+  var end = normalizeSendTime_(config['Send end time'], timezone);
+  if (!start || !end) return false;
+  if (start <= end) return current >= start && current <= end;
+  return current >= start || current <= end;
+}
+
+function normalizeSendTime_(value, timezone) {
+  if (value instanceof Date && !isNaN(value.getTime())) {
+    return Utilities.formatDate(value, timezone || APP_TIMEZONE, 'HH:mm');
+  }
+  if (typeof value === 'number' && isFinite(value)) {
+    var fraction = ((value % 1) + 1) % 1;
+    var minutes = Math.round(fraction * 1440) % 1440;
+    return String(Math.floor(minutes / 60)).padStart(2, '0') + ':' + String(minutes % 60).padStart(2, '0');
+  }
+  var match = String(value || '').trim().match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (!match) return '';
+  var hour = Number(match[1]);
+  var minute = Number(match[2]);
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return '';
+  return String(hour).padStart(2, '0') + ':' + String(minute).padStart(2, '0');
 }

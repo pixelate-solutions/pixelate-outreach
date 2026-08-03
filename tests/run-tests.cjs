@@ -151,6 +151,18 @@ test('send window honors Detroit weekdays and hours', () => {
   assert.strictEqual(context.isWithinSendWindow_(new Date('2026-08-01T14:00:00Z'),config),false);
 });
 
+test('send window accepts native Sheets time serials', () => {
+  const config = {'Timezone':'America/Detroit','Send days':'Monday,Tuesday,Wednesday,Thursday,Friday','Send start time':0,'Send end time':1439/1440};
+  assert.strictEqual(context.normalizeSendTime_(config['Send start time'], config.Timezone),'00:00');
+  assert.strictEqual(context.normalizeSendTime_(config['Send end time'], config.Timezone),'23:59');
+  assert.strictEqual(context.isWithinSendWindow_(new Date('2026-08-03T14:31:00Z'),config),true);
+});
+
+test('send window supports overnight ranges', () => {
+  const config = {'Timezone':'America/Detroit','Send days':'Monday','Send start time':'22:00','Send end time':'02:00'};
+  assert.strictEqual(context.isWithinSendWindow_(new Date('2026-08-04T03:00:00Z'),config),true);
+});
+
 test('reply classification covers key outcomes', () => {
   assert.strictEqual(context.classifyReply_('Please unsubscribe me',''), 'Unsubscribe');
   assert.strictEqual(context.classifyReply_('Interested. Let\'s talk next week.',''), 'Positive interest');
