@@ -118,7 +118,7 @@ function buildInitialMimeMessage_(lead, config) {
   }
   var signatureHtml = config['Gmail signature HTML'] || PropertiesService.getScriptProperties().getProperty(SIGNATURE_PROPERTY) || '';
   var signaturePlain = config['Gmail signature plain-text fallback'] || stripHtml_(signatureHtml);
-  var complianceFooter = [config['Opt-out sentence'] || '', config['Physical mailing address'] || ''].filter(function(value) { return normalizeWhitespace_(value); }).join(' ');
+  var complianceFooter = buildMessageFooter_(config);
   var plain = concatenateSignature_(lead['Email Body'], complianceFooter, signaturePlain, false);
   var html = concatenateSignature_(lead['Email Body'], complianceFooter, signatureHtml, true);
   var raw = buildMimeMessage_({
@@ -143,7 +143,7 @@ function buildFollowUpMimeMessage_(lead, config) {
   }
   var signatureHtml = config['Gmail signature HTML'] || PropertiesService.getScriptProperties().getProperty(SIGNATURE_PROPERTY) || '';
   var signaturePlain = config['Gmail signature plain-text fallback'] || stripHtml_(signatureHtml);
-  var complianceFooter = [config['Opt-out sentence'] || '', config['Physical mailing address'] || ''].filter(function(value) { return normalizeWhitespace_(value); }).join(' ');
+  var complianceFooter = buildMessageFooter_(config);
   var plain = concatenateSignature_(lead['Follow-Up Body'], complianceFooter, signaturePlain, false);
   var html = concatenateSignature_(lead['Follow-Up Body'], complianceFooter, signatureHtml, true);
   var headers = {};
@@ -207,6 +207,10 @@ function encodeMimeHeader_(value) {
 
 function configuredFromEmail_(config) {
   return normalizeEmail_(config['Default Gmail alias'] || config['Default sender Gmail address']);
+}
+
+function buildMessageFooter_(config) {
+  return normalizeWhitespace_(config['Opt-out sentence'] || '');
 }
 
 function gmailDraftExists_(draftId) {

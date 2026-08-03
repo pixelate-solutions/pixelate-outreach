@@ -272,6 +272,10 @@ test('signature concatenation avoids duplication and escapes HTML', () => {
   assert.strictEqual((context.concatenateSignature_('Hello\n\nJane Pixelate','','Jane Pixelate',false).match(/Jane Pixelate/g)||[]).length,1);
 });
 
+test('message footer excludes the optional physical mailing address', () => {
+  assert.strictEqual(context.buildMessageFooter_({'Opt-out sentence':'Opt out here.','Physical mailing address':'Shelby Township, MI 48316'}), 'Opt out here.');
+});
+
 test('retry behavior succeeds after transient failures', () => {
   let attempts=0;
   const value=context.retryOperation_(()=>{attempts++;if(attempts<3){const e=new Error('retry');e.transient=true;throw e;}return 'ok';},{attempts:3,baseDelayMs:1,retryWhen:e=>e.transient});

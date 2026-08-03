@@ -93,7 +93,7 @@ const CONFIG_DESCRIPTIONS = Object.freeze({
   'Research enabled': 'Master switch for all company research calls.',
   'Automatic sending enabled': 'Reserved for unattended triggers. Explicit menu sends still require approval and confirmation.',
   'Gmail signature HTML': 'HTML loaded from the selected Gmail send-as identity or pasted by you.',
-  'Physical mailing address': 'Included for compliance when supplied.',
+  'Physical mailing address': 'Optional reference field. It is not appended to email messages.',
   'Minimum email quality score': 'Drafts and sends are blocked below this deterministic score.',
   'Second AI quality check enabled': 'Runs a separate schema-constrained review for borderline or warned emails.',
   'Send days': 'Comma-separated weekday names in the configured timezone.',

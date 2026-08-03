@@ -86,7 +86,7 @@ After setup:
 4. Generate emails and review them in the sidebar or directly in the sheet.
 5. Approve one test row and create a draft. Verify recipient, subject, body, opt-out, and signature in Gmail.
 6. Check replies and follow-up behavior using controlled messages to your own address.
-7. Only after validation, add the physical address, verify sender identity, disable Test mode, approve a small production group, and use the explicit send confirmation.
+7. Only after validation, verify sender identity, disable Test mode, approve a small production group, and use the explicit send confirmation.
 
 ## Reliability notes
 
@@ -101,7 +101,7 @@ After setup:
 
 ## Compliance
 
-The software includes accurate sender fields, configurable reply-to, opt-out text, physical-address configuration, suppression enforcement, non-deceptive first-contact subjects, and no automatic sending. These controls do not replace legal review. The operator is responsible for applicable anti-spam, privacy, and industry rules and for ensuring every recipient and claim is appropriate.
+The software includes accurate sender fields, configurable reply-to, opt-out text, suppression enforcement, non-deceptive first-contact subjects, and approval gates. These controls do not replace legal review. The operator is responsible for applicable anti-spam, privacy, and industry rules and for ensuring every recipient and claim is appropriate.
 
 ## Uninstall
 

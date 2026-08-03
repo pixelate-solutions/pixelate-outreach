@@ -16,7 +16,7 @@ Current deployment status:
 - `gpt-5.6-luna` with `low` reasoning is active;
 - Test mode is off and production recipient targeting is enabled; automatic sending is off, follow-ups are off, all leads are unapproved, and no emails have been sent;
 - the OpenAI API key is configured and has passed live research and generation checks;
-- the configured mailing-location footer is `Shelby Township, MI 48316`.
+- no physical mailing location is appended to email messages.
 
 ## 1. Enable Apps Script API access
 
@@ -94,7 +94,6 @@ In Configuration set:
 - authorized Default Gmail alias, if used;
 - Sender display name;
 - Reply-to address;
-- physical mailing address;
 - opt-out sentence;
 - your own Test email address.
 
@@ -150,7 +149,7 @@ Test mode can create no more than the rows you explicitly select/approve; for th
 Before production:
 
 1. Confirm the sender address/alias is authorized in Gmail.
-2. Confirm signature, reply-to, opt-out, and physical address.
+2. Confirm signature, reply-to, and opt-out text.
 3. Review every row and evidence source.
 4. Disable Test mode.
 5. Leave Automatic sending disabled unless you deliberately build an unattended policy later.
