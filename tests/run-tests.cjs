@@ -40,9 +40,10 @@ const context = {
   getConfig_: () => ({ 'Minimum research confidence': 65 }),
 };
 vm.createContext(context);
-for (const file of ['Constants.gs','Utilities.gs','LeadRepository.gs','DoNotContactService.gs','EmailValidator.gs','EmailGenerationService.gs','GmailService.gs','SendingService.gs','FollowUpService.gs','ReplyTrackingService.gs','ResearchService.gs']) {
+for (const file of ['Constants.gs','Utilities.gs','Configuration.gs','LeadRepository.gs','DoNotContactService.gs','EmailValidator.gs','EmailGenerationService.gs','GmailService.gs','SendingService.gs','FollowUpService.gs','ReplyTrackingService.gs','ResearchService.gs']) {
   vm.runInContext(fs.readFileSync(path.join(root, 'src', file), 'utf8'), context, { filename: file });
 }
+context.getConfig_ = () => ({ 'Minimum research confidence': 65 });
 
 const tests = [];
 function test(name, fn) { tests.push({ name, fn }); }
@@ -156,6 +157,13 @@ test('send window accepts native Sheets time serials', () => {
   assert.strictEqual(context.normalizeSendTime_(config['Send start time'], config.Timezone),'00:00');
   assert.strictEqual(context.normalizeSendTime_(config['Send end time'], config.Timezone),'23:59');
   assert.strictEqual(context.isWithinSendWindow_(new Date('2026-08-03T14:31:00Z'),config),true);
+});
+
+test('configuration uses displayed time text instead of stringified Date objects', () => {
+  const rawTime = new Date('1899-12-30T05:00:00Z');
+  assert.strictEqual(context.configCellValue_('Send start time', rawTime, '0:00'),'0:00');
+  assert.strictEqual(context.configCellValue_('Send end time', rawTime, '23:59'),'23:59');
+  assert.strictEqual(context.configCellValue_('Timezone', 'America/Detroit', 'America/Detroit'),'America/Detroit');
 });
 
 test('send window supports overnight ranges', () => {

@@ -3,13 +3,23 @@ function getConfig_() {
   var config = {};
   Object.keys(DEFAULT_CONFIG).forEach(function(key) { config[key] = DEFAULT_CONFIG[key]; });
   if (!sheet || sheet.getLastRow() < 2) return config;
-  sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues().forEach(function(row) {
+  var range = sheet.getRange(2, 1, sheet.getLastRow() - 1, 2);
+  var values = range.getValues();
+  var displayed = range.getDisplayValues();
+  values.forEach(function(row, index) {
     var key = String(row[0] || '');
     if (!Object.prototype.hasOwnProperty.call(DEFAULT_CONFIG, key)) return;
-    config[key] = coerceConfigValue_(row[1], DEFAULT_CONFIG[key]);
+    config[key] = coerceConfigValue_(configCellValue_(key, row[1], displayed[index][1]), DEFAULT_CONFIG[key]);
   });
   config['OpenAI API key status'] = PropertiesService.getScriptProperties().getProperty(OPENAI_KEY_PROPERTY) ? 'Configured' : 'Missing';
   return config;
+}
+
+function configCellValue_(key, rawValue, displayedValue) {
+  if (key === 'Send start time' || key === 'Send end time') {
+    return String(displayedValue || '').trim() || rawValue;
+  }
+  return rawValue;
 }
 
 function coerceConfigValue_(value, defaultValue) {
@@ -76,4 +86,3 @@ function saveSecureConfiguration(payload) {
   setConfigValue_('OpenAI API key status', PropertiesService.getScriptProperties().getProperty(OPENAI_KEY_PROPERTY) ? 'Configured' : 'Missing');
   return { ok: true, status: getConfig_()['OpenAI API key status'] };
 }
-
