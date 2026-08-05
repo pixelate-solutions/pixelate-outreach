@@ -51,7 +51,24 @@ const context = {
     getScriptProperties: () => propertyStore(scriptProperties),
     getUserProperties: () => propertyStore(userProperties)
   },
-  ScriptApp: { getOAuthToken: () => 'test-oauth-token' },
+  ScriptApp: {
+    getOAuthToken: () => 'test-oauth-token',
+    getProjectTriggers: () => context.__triggers,
+    deleteTrigger(trigger) { context.__triggers = context.__triggers.filter(item => item !== trigger); },
+    newTrigger(handler) {
+      const builder = {
+        interval: 0,
+        timeBased() { return this; },
+        everyMinutes(minutes) { this.interval = minutes; return this; },
+        create() {
+          const trigger = { handler, interval: this.interval, getHandlerFunction: () => handler };
+          context.__triggers.push(trigger);
+          return trigger;
+        }
+      };
+      return builder;
+    }
+  },
   UrlFetchApp: {
     fetch(url, options) {
       context.__fetches.push({url, options});
@@ -64,10 +81,11 @@ const context = {
   },
   __fetches: [],
   __fetchResponse: null,
+  __triggers: [],
   getConfig_: () => ({ 'Minimum research confidence': 65 }),
 };
 vm.createContext(context);
-for (const file of ['Constants.gs','Utilities.gs','Configuration.gs','LeadRepository.gs','DoNotContactService.gs','EmailValidator.gs','EmailGenerationService.gs','GmailService.gs','SendingService.gs','FollowUpService.gs','ReplyTrackingService.gs','ResearchService.gs']) {
+for (const file of ['Constants.gs','Utilities.gs','Configuration.gs','LeadRepository.gs','DoNotContactService.gs','EmailValidator.gs','EmailGenerationService.gs','GmailService.gs','SendingService.gs','FollowUpService.gs','ReplyTrackingService.gs','ResearchService.gs','TriggerService.gs']) {
   vm.runInContext(fs.readFileSync(path.join(root, 'src', file), 'utf8'), context, { filename: file });
 }
 context.getConfig_ = () => ({ 'Minimum research confidence': 65 });
@@ -223,6 +241,24 @@ test('stale send progress and confirmations are cleaned up', () => {
 test('daily send-limit calculation never goes negative', () => {
   assert.strictEqual(context.calculateDailyRemaining_(10,3),7);
   assert.strictEqual(context.calculateDailyRemaining_(10,12),0);
+});
+
+test('automatic scheduling uses the smaller of daily capacity and approved candidates', () => {
+  assert.strictEqual(context.calculateAutomaticSendCount_(true,false,true,50,97),50);
+  assert.strictEqual(context.calculateAutomaticSendCount_(true,false,true,50,12),12);
+  assert.strictEqual(context.calculateAutomaticSendCount_(false,false,true,50,97),0);
+  assert.strictEqual(context.calculateAutomaticSendCount_(true,true,true,50,97),0);
+  assert.strictEqual(context.calculateAutomaticSendCount_(true,false,false,50,97),0);
+});
+
+test('automatic scheduler installs exactly one recurring trigger', () => {
+  context.__triggers.length = 0;
+  const first = context.ensureAutomaticSendTrigger_();
+  const second = context.ensureAutomaticSendTrigger_();
+  assert.strictEqual(first, second);
+  assert.strictEqual(context.__triggers.length, 1);
+  assert.strictEqual(context.__triggers[0].handler, 'runAutomaticSendBatch');
+  assert.strictEqual(context.__triggers[0].interval, 15);
 });
 
 test('send window honors Detroit weekdays and hours', () => {

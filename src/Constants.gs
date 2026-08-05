@@ -6,6 +6,9 @@ const OPENAI_KEY_PROPERTY = 'OPENAI_API_KEY';
 const SEND_CONFIRMATION_PREFIX = 'SEND_CONFIRMATION_';
 const SEND_PROGRESS_PREFIX = 'SEND_PROGRESS_';
 const SEND_CONTINUATION_PROPERTY = 'SEND_CONTINUATION';
+const AUTOMATIC_SEND_TRIGGER_HANDLER = 'runAutomaticSendBatch';
+const AUTOMATIC_SEND_STATUS_PROPERTY = 'AUTOMATIC_SEND_STATUS';
+const AUTOMATIC_SEND_INTERVAL_MINUTES = 15;
 const SIGNATURE_PROPERTY = 'GMAIL_SIGNATURE_HTML';
 const CACHE_SHEET = 'Company Research Cache';
 
@@ -91,7 +94,7 @@ const CONFIG_DESCRIPTIONS = Object.freeze({
   'OpenAI model': 'Single configurable Responses API model used by research and generation.',
   'OpenAI reasoning effort': 'Supported value such as none, low, medium, or high.',
   'Research enabled': 'Master switch for all company research calls.',
-  'Automatic sending enabled': 'Reserved for unattended triggers. Explicit menu sends still require approval and confirmation.',
+  'Automatic sending enabled': 'When enabled, the installed scheduler sends approved eligible rows up to the daily maximum during configured days and hours.',
   'Gmail signature HTML': 'HTML loaded from the selected Gmail send-as identity or pasted by you.',
   'Physical mailing address': 'Optional reference field. It is not appended to email messages.',
   'Minimum email quality score': 'Drafts and sends are blocked below this deterministic score.',

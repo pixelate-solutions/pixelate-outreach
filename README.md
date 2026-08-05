@@ -7,7 +7,7 @@ The verified native workbook is [Pixelate Outbound Assistant](https://docs.googl
 ## Initial safety defaults
 
 - Test mode is on.
-- Automatic sending is off.
+- Automatic scheduling is controlled by the Configuration checkbox and an installable 15-minute trigger.
 - Follow-ups are off.
 - The default daily send limit is 10.
 - Draft creation requires lead approval.
@@ -97,6 +97,7 @@ After setup:
 - The send confirmation stays open with live processed, sent, failed, pending, and scheduled counts, plus a direct Activity Log button.
 - Existing Gmail draft IDs are checked and updated instead of duplicated.
 - Every send gate is re-evaluated immediately before sending.
+- Automatic scheduling sends only approved eligible rows during configured days/hours and stops at the daily maximum; it can be enabled, paused, and inspected from the Pixelate Outreach menu.
 - A confirmed send continuation expires after 24 hours and rechecks Test mode, daily limits, Do Not Contact, and send windows.
 
 ## Compliance

@@ -1,3 +1,83 @@
+function runAutomaticSendBatch() {
+  var config = getConfig_();
+  var now = new Date();
+  if (config['Automatic sending enabled'] !== true) {
+    writeAutomaticSendStatus_({ status: 'paused', checkedAt: Date.now(), message: 'Automatic scheduling is paused.' });
+    return { sent: 0, failed: 0, scheduled: 0, skipped: 'paused' };
+  }
+  if (config['Test mode'] === true) {
+    writeAutomaticSendStatus_({ status: 'blocked', checkedAt: Date.now(), message: 'Automatic scheduling is blocked while Test mode is enabled.' });
+    return { sent: 0, failed: 0, scheduled: 0, skipped: 'test_mode' };
+  }
+  if (!isValidEmail_(configuredFromEmail_(config))) {
+    var senderError = new Error('Automatic scheduling requires a valid configured Gmail sender or authorized alias.');
+    writeAutomaticSendStatus_({ status: 'failed', checkedAt: Date.now(), message: senderError.message });
+    logActivity_({ action: 'Automatic Send Batch', result: 'Failed', error: senderError.message });
+    throw senderError;
+  }
+  if (!isWithinSendWindow_(now, config)) {
+    writeAutomaticSendStatus_({ status: 'waiting', checkedAt: Date.now(), message: 'Waiting for the configured send days and hours.' });
+    return { sent: 0, failed: 0, scheduled: 0, skipped: 'send_window' };
+  }
+
+  var lock = LockService.getDocumentLock();
+  if (!lock.tryLock(5000)) {
+    writeAutomaticSendStatus_({ status: 'waiting', checkedAt: Date.now(), message: 'Waiting for another outreach operation to finish.' });
+    return { sent: 0, failed: 0, scheduled: 0, skipped: 'locked' };
+  }
+  try {
+    if (PropertiesService.getScriptProperties().getProperty(SEND_CONTINUATION_PROPERTY)) {
+      writeAutomaticSendStatus_({ status: 'waiting', checkedAt: Date.now(), message: 'Waiting for the confirmed send continuation already in progress.' });
+      return { sent: 0, failed: 0, scheduled: 0, skipped: 'continuation' };
+    }
+    var remaining = dailySendRemaining_(config, now);
+    if (remaining <= 0) {
+      writeAutomaticSendStatus_({ status: 'limit_reached', checkedAt: Date.now(), message: 'The daily send maximum has been reached.' });
+      return { sent: 0, failed: 0, scheduled: 0, skipped: 'daily_limit' };
+    }
+    var candidates = collectSendCandidates_(config);
+    var sendCount = calculateAutomaticSendCount_(true, false, true, remaining, candidates.length);
+    if (sendCount <= 0) {
+      writeAutomaticSendStatus_({ status: 'idle', checkedAt: Date.now(), message: 'No approved eligible emails are waiting.' });
+      return { sent: 0, failed: 0, scheduled: 0, skipped: 'no_candidates' };
+    }
+    var items = candidates.slice(0, sendCount).map(function(candidate) {
+      return { row: candidate.lead._rowNumber, type: candidate.type };
+    });
+    var token = 'automatic-' + Utilities.getUuid();
+    writeSendProgress_(token, {
+      status: 'running',
+      total: items.length,
+      processed: 0,
+      sent: 0,
+      failed: 0,
+      scheduled: 0,
+      createdAt: Date.now(),
+      startedAt: Date.now(),
+      message: 'Automatic approved send started.'
+    });
+    writeAutomaticSendStatus_({ status: 'running', checkedAt: Date.now(), total: items.length, message: 'Sending up to ' + items.length + ' approved email(s).' });
+    var summary = processConfirmedSendItems_(items, config, Date.now(), token, { source: 'automatic' });
+    refreshCompanyOutreachWarnings_();
+    var resultLabel = summary.failed ? (summary.sent ? 'Partial' : 'Failed') : 'Success';
+    var message = 'Automatic batch: ' + summary.sent + ' sent, ' + summary.failed + ' failed, ' + summary.scheduled + ' scheduled.';
+    writeAutomaticSendStatus_({ status: summary.scheduled ? 'scheduled' : 'completed', checkedAt: Date.now(), sent: summary.sent, failed: summary.failed, scheduled: summary.scheduled, message: message });
+    logActivity_({ action: 'Automatic Send Batch', result: resultLabel, details: message });
+    return summary;
+  } catch (error) {
+    writeAutomaticSendStatus_({ status: 'failed', checkedAt: Date.now(), message: truncate_(error.message, 500) });
+    logActivity_({ action: 'Automatic Send Batch', result: 'Failed', error: error.message });
+    throw error;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function calculateAutomaticSendCount_(enabled, testMode, withinWindow, dailyRemaining, candidateCount) {
+  if (enabled !== true || testMode === true || withinWindow !== true) return 0;
+  return Math.max(0, Math.min(Number(dailyRemaining || 0), Number(candidateCount || 0)));
+}
+
 function showSendConfirmation() {
   cleanupStaleSendState_();
   var config = getConfig_();
@@ -82,7 +162,7 @@ function confirmSendBatch(token) {
   }
 }
 
-function processConfirmedSendItems_(items, config, startedAt, progressToken) {
+function processConfirmedSendItems_(items, config, startedAt, progressToken, sendContext) {
   var summary = { sent: 0, failed: 0, scheduled: 0 };
   var progress = readSendProgress_(progressToken) || {
     status: 'running', total: items.length, processed: 0, sent: 0, failed: 0, scheduled: 0, createdAt: Date.now(), startedAt: startedAt
@@ -90,7 +170,7 @@ function processConfirmedSendItems_(items, config, startedAt, progressToken) {
   for (var i = 0; i < items.length; i++) {
     if (isExecutionTimeLow_(startedAt, 260000)) {
       var remainder = items.slice(i);
-      PropertiesService.getScriptProperties().setProperty(SEND_CONTINUATION_PROPERTY, JSON.stringify({ createdAt: Date.now(), items: remainder, progressToken: progressToken }));
+      PropertiesService.getScriptProperties().setProperty(SEND_CONTINUATION_PROPERTY, JSON.stringify({ createdAt: Date.now(), items: remainder, progressToken: progressToken, sendContext: sendContext || { source: 'manual' } }));
       scheduleContinuation_('continueSendBatch_', 2);
       summary.scheduled = remainder.length;
       progress.status = 'scheduled';
@@ -114,8 +194,8 @@ function processConfirmedSendItems_(items, config, startedAt, progressToken) {
       continue;
     }
     try {
-      if (items[i].type === 'follow_up') sendFollowUp_(lead, config);
-      else sendInitial_(lead, config);
+      if (items[i].type === 'follow_up') sendFollowUp_(lead, config, sendContext);
+      else sendInitial_(lead, config, sendContext);
       summary.sent++;
       progress.sent++;
       progress.lastError = '';
@@ -150,18 +230,29 @@ function continueSendBatch_() {
     throw new Error('Confirmed send continuation expired after 24 hours.');
   }
   var config = getConfig_();
+  if (request.sendContext && request.sendContext.source === 'automatic' && config['Automatic sending enabled'] !== true) {
+    PropertiesService.getScriptProperties().deleteProperty(SEND_CONTINUATION_PROPERTY);
+    writeAutomaticSendStatus_({ status: 'paused', checkedAt: Date.now(), message: 'An automatic continuation was cancelled because scheduling was paused.' });
+    return { sent: 0, failed: 0, scheduled: 0 };
+  }
   if (config['Test mode'] === true) {
     PropertiesService.getScriptProperties().deleteProperty(SEND_CONTINUATION_PROPERTY);
     throw new Error('Send continuation cancelled because Test mode is enabled.');
   }
   if (!isWithinSendWindow_(new Date(), config)) {
     updateScheduledSendProgress_(request.progressToken, request.items.length, 'Waiting for the configured send window.');
+    if (request.sendContext && request.sendContext.source === 'automatic') {
+      writeAutomaticSendStatus_({ status: 'waiting', checkedAt: Date.now(), scheduled: request.items.length, message: 'Automatic continuation is waiting for the configured send window.' });
+    }
     scheduleContinuation_('continueSendBatch_', 60);
     return { sent: 0, failed: 0, scheduled: request.items.length };
   }
   var lock = LockService.getDocumentLock();
   if (!lock.tryLock(30000)) {
     updateScheduledSendProgress_(request.progressToken, request.items.length, 'Waiting for the active send operation to finish.');
+    if (request.sendContext && request.sendContext.source === 'automatic') {
+      writeAutomaticSendStatus_({ status: 'waiting', checkedAt: Date.now(), scheduled: request.items.length, message: 'Automatic continuation is waiting for another outreach operation to finish.' });
+    }
     scheduleContinuation_('continueSendBatch_', 2);
     return { sent: 0, failed: 0, scheduled: request.items.length };
   }
@@ -169,18 +260,34 @@ function continueSendBatch_() {
     var remainingToday = dailySendRemaining_(config, new Date());
     if (remainingToday <= 0) {
       updateScheduledSendProgress_(request.progressToken, request.items.length, 'Waiting for the next available daily send allowance.');
+      if (request.sendContext && request.sendContext.source === 'automatic') {
+        writeAutomaticSendStatus_({ status: 'limit_reached', checkedAt: Date.now(), scheduled: request.items.length, message: 'Automatic continuation is waiting for the next available daily send allowance.' });
+      }
       scheduleContinuation_('continueSendBatch_', 60);
       return { sent: 0, failed: 0, scheduled: request.items.length };
     }
     var currentItems = request.items.slice(0, remainingToday);
     var futureItems = request.items.slice(remainingToday);
     PropertiesService.getScriptProperties().deleteProperty(SEND_CONTINUATION_PROPERTY);
-    var result = processConfirmedSendItems_(currentItems, config, Date.now(), request.progressToken);
+    var result = processConfirmedSendItems_(currentItems, config, Date.now(), request.progressToken, request.sendContext);
     if (futureItems.length && !PropertiesService.getScriptProperties().getProperty(SEND_CONTINUATION_PROPERTY)) {
-      PropertiesService.getScriptProperties().setProperty(SEND_CONTINUATION_PROPERTY, JSON.stringify({ createdAt: request.createdAt, items: futureItems, progressToken: request.progressToken }));
+      PropertiesService.getScriptProperties().setProperty(SEND_CONTINUATION_PROPERTY, JSON.stringify({ createdAt: request.createdAt, items: futureItems, progressToken: request.progressToken, sendContext: request.sendContext || { source: 'manual' } }));
       updateScheduledSendProgress_(request.progressToken, futureItems.length, 'Waiting for the next available daily send allowance.');
       scheduleContinuation_('continueSendBatch_', 60);
       result.scheduled += futureItems.length;
+    }
+    if (request.sendContext && request.sendContext.source === 'automatic') {
+      var automaticProgress = readSendProgress_(request.progressToken) || {};
+      var automaticMessage = 'Automatic batch: ' + Number(automaticProgress.sent || 0) + ' sent, ' + Number(automaticProgress.failed || 0) + ' failed, ' + Number(result.scheduled || 0) + ' scheduled.';
+      writeAutomaticSendStatus_({
+        status: result.scheduled ? 'scheduled' : 'completed',
+        checkedAt: Date.now(),
+        sent: Number(automaticProgress.sent || 0),
+        failed: Number(automaticProgress.failed || 0),
+        scheduled: Number(result.scheduled || 0),
+        message: automaticMessage
+      });
+      if (!result.scheduled) logActivity_({ action: 'Automatic Send Batch', result: automaticProgress.failed ? (automaticProgress.sent ? 'Partial' : 'Failed') : 'Success', details: automaticMessage });
     }
     return result;
   } finally {
@@ -246,7 +353,7 @@ function collectSendCandidates_(config) {
   return candidates;
 }
 
-function sendInitial_(lead, config) {
+function sendInitial_(lead, config, sendContext) {
   if (lead['Approved'] !== true) throw new Error('Initial email is not approved.');
   if (hasPreviousSend_(lead)) throw new Error('Initial email was already sent.');
   var decision = draftDecision_(lead, config, loadDoNotContactIndex_());
@@ -273,10 +380,11 @@ function sendInitial_(lead, config) {
     'Last Error': '',
     'Last Updated': sentAt
   });
-  logActivity_({ lead: lead, action: 'Send Initial Email', result: 'Success', draftId: draftId, messageId: message.id || '', details: 'Explicitly approved and confirmed send.' });
+  var details = sendContext && sendContext.source === 'automatic' ? 'Automatically scheduled from an approved row.' : 'Explicitly approved and confirmed send.';
+  logActivity_({ lead: lead, action: 'Send Initial Email', result: 'Success', draftId: draftId, messageId: message.id || '', details: details });
 }
 
-function sendFollowUp_(lead, config) {
+function sendFollowUp_(lead, config, sendContext) {
   if (lead['Follow-Up Approved'] !== true) throw new Error('Follow-up is not approved.');
   if (isDoNotContact_(lead)) throw new Error('Lead is on the Do Not Contact list.');
   if (!followUpEligible_(lead, config, new Date())) throw new Error('Follow-up is not eligible.');
@@ -296,7 +404,8 @@ function sendFollowUp_(lead, config) {
     'Last Error': '',
     'Last Updated': sentAt
   });
-  logActivity_({ lead: lead, action: 'Send Follow-Up', result: 'Success', draftId: draftId, messageId: message.id || '', details: 'Follow-up ' + count + ' explicitly approved and confirmed.' });
+  var details = sendContext && sendContext.source === 'automatic' ? 'Follow-up ' + count + ' automatically scheduled from an approved row.' : 'Follow-up ' + count + ' explicitly approved and confirmed.';
+  logActivity_({ lead: lead, action: 'Send Follow-Up', result: 'Success', draftId: draftId, messageId: message.id || '', details: details });
 }
 
 function dailySendRemaining_(config, now) {

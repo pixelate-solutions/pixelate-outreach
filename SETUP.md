@@ -152,7 +152,7 @@ Before production:
 2. Confirm signature, reply-to, and opt-out text.
 3. Review every row and evidence source.
 4. Disable Test mode.
-5. Leave Automatic sending disabled unless you deliberately build an unattended policy later.
+5. For unattended delivery, choose **Enable Automatic Scheduling**. The installed trigger checks every 15 minutes and sends only approved eligible rows during the configured window, up to the daily maximum.
 6. Approve a small batch.
 7. Choose **Send Approved Emails** and inspect the confirmation list.
 8. Confirm only if recipients, companies, sender, and count are correct.
@@ -160,6 +160,8 @@ Before production:
 After confirmation, keep the dialog open to see live processed, sent, failed, pending, and scheduled counts. Sending continues if you close it; use **View Activity Log** in the result panel for the permanent per-recipient audit trail.
 
 The default daily limit is 10, Monday-Friday, 09:00-16:30 America/Detroit. Each send is revalidated immediately beforehand.
+
+Use **Pause Automatic Scheduling** to stop future automatic batches. A continuation already waiting from an automatic batch is cancelled when the paused state is observed. Use **Automatic Scheduling Status** for the installed-trigger state and last scheduler result.
 
 ## 14. Replies and follow-ups
 
