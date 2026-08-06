@@ -45,13 +45,17 @@ function emailOutputSchema_() {
       body_plain_text: { type: 'string' },
       personalized_opener: { type: 'string' },
       project_hypothesis: { type: 'string' },
+      impact_metric: { type: 'string', enum: ['labor_dollars_saved', 'revenue_gained', 'cycle_time_reduced', 'error_reduction', 'support_tickets_avoided', 'none'] },
+      impact_hypothesis: { type: 'string' },
+      impact_assumptions: { type: 'array', maxItems: 2, items: { type: 'string' } },
+      impact_confidence: { type: 'string', enum: ['High', 'Medium', 'Low'] },
       cta: { type: 'string' },
       quality_score: { type: 'integer', minimum: 0, maximum: 100 },
       quality_issues: { type: 'array', items: { type: 'string' } },
       research_claims_used: { type: 'array', items: { type: 'string' } },
       safe_to_send: { type: 'boolean' }
     },
-    required: ['subject', 'subject_alternatives', 'body_plain_text', 'personalized_opener', 'project_hypothesis', 'cta', 'quality_score', 'quality_issues', 'research_claims_used', 'safe_to_send'],
+    required: ['subject', 'subject_alternatives', 'body_plain_text', 'personalized_opener', 'project_hypothesis', 'impact_metric', 'impact_hypothesis', 'impact_assumptions', 'impact_confidence', 'cta', 'quality_score', 'quality_issues', 'research_claims_used', 'safe_to_send'],
     additionalProperties: false
   };
 }

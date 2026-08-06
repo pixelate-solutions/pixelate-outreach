@@ -139,7 +139,7 @@ test('research JSON validation enforces high-fit evidence', () => {
 });
 
 test('email JSON validation and word count work', () => {
-  const email = {subject:'Service portal idea',subject_alternatives:['Parts visibility','Service coordination'],body_plain_text:'Hi Jane',personalized_opener:'A specific opener',project_hypothesis:'Portal',cta:'Worth discussing?',quality_score:90,quality_issues:[],research_claims_used:['Makes machines'],safe_to_send:true};
+  const email = {subject:'Service portal idea',subject_alternatives:['Parts visibility','Service coordination'],body_plain_text:'Hi Jane',personalized_opener:'A specific opener',project_hypothesis:'Portal',impact_metric:'none',impact_hypothesis:'',impact_assumptions:[],impact_confidence:'Low',cta:'Worth discussing?',quality_score:90,quality_issues:[],research_claims_used:['Makes machines'],safe_to_send:true};
   assert.strictEqual(context.validateEmailJson_(email), email);
   assert.strictEqual(context.countWords_('one two\nthree'), 3);
 });
@@ -152,18 +152,43 @@ test('em dash and placeholder rejection are deterministic', () => {
 
 test('unsupported-claim warnings catch internal process assumptions', () => {
   const lead = {'First Name':'Jane','Company':'Acme','Research Confidence':90,'Fit Level':'High','Fit Score':90,'Evidence 1':'Acme makes industrial pumps','Evidence 1 URL':'https://acme.com/pumps','Evidence 2':'Acme offers field service'};
-  const email = {subject:'Pump service portal',subject_alternatives:['A','B'],body_plain_text:'Hi Jane,\n\nI know Acme is still using spreadsheets for service. Pixelate builds a service portal.\n\nWould that help?',personalized_opener:'Acme makes industrial pumps',project_hypothesis:'Portal',cta:'Would that help?',quality_score:90,quality_issues:[],research_claims_used:['Acme makes industrial pumps'],safe_to_send:true};
-  const config = {'Maximum email word count':110,'Minimum research confidence':65,'Minimum fit score':50,'Minimum email quality score':80,'Allow case-study reference':false};
+  const email = {subject:'Pump service portal',subject_alternatives:['A','B'],body_plain_text:'Hi Jane,\n\nI know Acme is still using spreadsheets for service. Pixelate builds a service portal.\n\nWould that help?',personalized_opener:'Acme makes industrial pumps',project_hypothesis:'Portal',impact_metric:'none',impact_hypothesis:'',impact_assumptions:[],impact_confidence:'Low',cta:'Would that help?',quality_score:90,quality_issues:[],research_claims_used:['Acme makes industrial pumps'],safe_to_send:true};
+  const config = {'Maximum email word count':110,'Minimum research confidence':65,'Minimum fit score':50,'Minimum email quality score':80,'Allow case-study reference':false,'Business-case estimates enabled':false};
   const result = context.validateGeneratedEmail_(lead,email,config,[]);
   assert.ok(result.hardIssues.some(issue => /unsupported/.test(issue)));
 });
 
 test('implementation and no-change promises are blocked', () => {
   const lead = {'First Name':'Jane','Company':'Acme','Research Confidence':90,'Fit Level':'High','Fit Score':90,'Evidence 1':'Acme makes industrial pumps','Evidence 1 URL':'https://acme.com/pumps','Evidence 2':'Acme offers field service'};
-  const email = {subject:'Pump service portal',subject_alternatives:['A','B'],body_plain_text:'Hi Jane,\n\nAcme makes industrial pumps. Pixelate could build a service portal without changing existing tools.\n\nWould that be useful?',personalized_opener:'Acme makes industrial pumps',project_hypothesis:'Portal',cta:'Would that be useful?',quality_score:90,quality_issues:[],research_claims_used:['Acme makes industrial pumps'],safe_to_send:true};
-  const config = {'Maximum email word count':110,'Minimum research confidence':65,'Minimum fit score':50,'Minimum email quality score':80,'Allow case-study reference':false};
+  const email = {subject:'Pump service portal',subject_alternatives:['A','B'],body_plain_text:'Hi Jane,\n\nAcme makes industrial pumps. Pixelate could build a service portal without changing existing tools.\n\nWould that be useful?',personalized_opener:'Acme makes industrial pumps',project_hypothesis:'Portal',impact_metric:'none',impact_hypothesis:'',impact_assumptions:[],impact_confidence:'Low',cta:'Would that be useful?',quality_score:90,quality_issues:[],research_claims_used:['Acme makes industrial pumps'],safe_to_send:true};
+  const config = {'Maximum email word count':110,'Minimum research confidence':65,'Minimum fit score':50,'Minimum email quality score':80,'Allow case-study reference':false,'Business-case estimates enabled':false};
   const result = context.validateGeneratedEmail_(lead,email,config,[]);
   assert.ok(result.hardIssues.some(issue => /implementation or current-state/.test(issue)));
+});
+
+test('transparent business-case ranges pass deterministic estimate validation', () => {
+  const lead = {'First Name':'Jane','Company':'Acme','Research Confidence':90,'Fit Level':'High','Fit Score':90,'Evidence 1':'Acme makes industrial pumps','Evidence 1 URL':'https://acme.com/pumps','Evidence 2':'Acme offers field service'};
+  const hypothesis = 'If Acme handled 400 service requests a month and each saved 5 to 10 minutes at a $75 loaded hourly rate, that could equal roughly $30,000 to $60,000 in annual labor capacity.';
+  const email = {subject:'Pump service capacity',subject_alternatives:['Service request impact','A service workflow hypothesis'],body_plain_text:'Hi Jane,\n\nAcme makes industrial pumps and offers field service.\n\n' + hypothesis + '\n\nPixelate could build a service request portal for intake, technical details, and status updates.\n\nWould it be useful to compare those assumptions?',personalized_opener:'Acme makes industrial pumps and offers field service.',project_hypothesis:'Service request portal',impact_metric:'labor_dollars_saved',impact_hypothesis:hypothesis,impact_assumptions:['400 service requests a month','5 to 10 minutes at a $75 loaded hourly rate'],impact_confidence:'Low',cta:'Would it be useful to compare those assumptions?',quality_score:95,quality_issues:[],research_claims_used:['Acme makes industrial pumps'],safe_to_send:true};
+  const config = {'Maximum email word count':110,'Minimum research confidence':65,'Minimum fit score':50,'Minimum email quality score':80,'Allow case-study reference':false,'Business-case estimates enabled':true,'Business-case metric priorities':'labor_dollars_saved,cycle_time_reduced','Default loaded hourly rate':75};
+  const result = context.validateGeneratedEmail_(lead,email,config,[]);
+  assert.ok(!result.hardIssues.some(issue => /business-case|impact|metric|guaranteed/i.test(issue)), result.hardIssues.join('\n'));
+});
+
+test('business-case guarantees and unlabeled financial claims remain blocked', () => {
+  const lead = {'First Name':'Jane','Company':'Acme','Research Confidence':90,'Fit Level':'High','Fit Score':90,'Evidence 1':'Acme makes industrial pumps','Evidence 1 URL':'https://acme.com/pumps','Evidence 2':'Acme offers field service'};
+  const guaranteed = 'Acme will save $30,000 to $60,000 each year.';
+  const email = {subject:'Pump service capacity',subject_alternatives:['A','B'],body_plain_text:'Hi Jane,\n\nAcme makes industrial pumps. ' + guaranteed + ' Pixelate could build a service request portal.\n\nWould that be useful?',personalized_opener:'Acme makes industrial pumps',project_hypothesis:'Service request portal',impact_metric:'labor_dollars_saved',impact_hypothesis:guaranteed,impact_assumptions:['$30,000 to $60,000 each year'],impact_confidence:'Low',cta:'Would that be useful?',quality_score:95,quality_issues:[],research_claims_used:['Acme makes industrial pumps'],safe_to_send:true};
+  const config = {'Maximum email word count':110,'Minimum research confidence':65,'Minimum fit score':50,'Minimum email quality score':80,'Allow case-study reference':false,'Business-case estimates enabled':true,'Business-case metric priorities':'labor_dollars_saved'};
+  const result = context.validateGeneratedEmail_(lead,email,config,[]);
+  assert.ok(result.hardIssues.some(issue => /hypothesis|guaranteed/i.test(issue)));
+
+  email.impact_metric = 'none';
+  email.impact_hypothesis = '';
+  email.impact_assumptions = [];
+  const disabled = Object.assign({}, config, {'Business-case estimates enabled':false});
+  const disabledResult = context.validateGeneratedEmail_(lead,email,disabled,[]);
+  assert.ok(disabledResult.hardIssues.some(issue => /estimates are disabled/.test(issue)));
 });
 
 test('email regeneration excludes the current row from similarity checks', () => {
