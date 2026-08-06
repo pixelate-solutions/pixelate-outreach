@@ -11,6 +11,7 @@ const AUTOMATIC_SEND_STATUS_PROPERTY = 'AUTOMATIC_SEND_STATUS';
 const AUTOMATIC_SEND_INTERVAL_MINUTES = 15;
 const SIGNATURE_PROPERTY = 'GMAIL_SIGNATURE_HTML';
 const CACHE_SHEET = 'Company Research Cache';
+const DEFAULT_EMAIL_WRITING_INSTRUCTIONS = 'Write a concise, natural first-contact B2B email of 65-{{MAX_EMAIL_WORDS}} words before the signature and opt-out. Start with "Hi [First Name],". Use one verified company-specific observation and the exact company name. Present one operational workflow possibility as a possibility, then propose exactly one specific Pixelate project tied to the recommended project; mention Pixelate no more than once. Include exactly one short business-case hypothesis using one metric from {{METRIC_PRIORITIES}}. Build a conservative numeric range from one or two assumptions stated in the email. For labor estimates, use the configured ${{LOADED_HOURLY_RATE}} loaded hourly rate and state it. Treat unknown inputs as assumptions, never company facts, and use "could," "may," "might," or "roughly." End with one low-pressure question. Generate one selected subject and two alternatives. Do not use Re: or Fwd:, markdown, links, a signature, em dashes, fake compliments, aggressive CTAs, buzzwords, case studies unless explicitly approved, claims about current internal systems or teams, implementation, integration, replacement, or migration promises, actual savings, guaranteed ROI, or payback claims.';
 
 const REQUIRED_SHEETS = Object.freeze([
   'Leads',
@@ -76,6 +77,7 @@ const DEFAULT_CONFIG = Object.freeze({
   'Business-case estimates enabled': true,
   'Business-case metric priorities': 'labor_dollars_saved,cycle_time_reduced,error_reduction,support_tickets_avoided,revenue_gained',
   'Default loaded hourly rate': 75,
+  'Email writing instructions prompt': DEFAULT_EMAIL_WRITING_INSTRUCTIONS,
   'Send days': 'Monday,Tuesday,Wednesday,Thursday,Friday',
   'Send start time': '09:00',
   'Send end time': '16:30',
@@ -105,6 +107,7 @@ const CONFIG_DESCRIPTIONS = Object.freeze({
   'Business-case estimates enabled': 'Adds one conservative, assumption-backed impact range to each newly generated first-contact email.',
   'Business-case metric priorities': 'Comma-separated priority order using labor_dollars_saved, revenue_gained, cycle_time_reduced, error_reduction, or support_tickets_avoided.',
   'Default loaded hourly rate': 'Dollar-per-hour assumption used only for labor-impact estimates and stated in the email.',
+  'Email writing instructions prompt': 'Complete editable first-contact writing brief, including personalization, structure, tone, subjects, CTA, and business-case guidance. Supports {{MAX_EMAIL_WORDS}}, {{METRIC_PRIORITIES}}, and {{LOADED_HOURLY_RATE}}. Blank values use the default; safety validation remains enforced.',
   'Send days': 'Comma-separated weekday names in the configured timezone.',
   'Follow-up delay': 'Days after the previous send before a follow-up becomes eligible.',
   'Test mode': 'When enabled, draft recipients are replaced with the test address, subjects are prefixed [TEST], and sending is disabled.',

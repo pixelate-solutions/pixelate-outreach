@@ -146,10 +146,8 @@ function assertLeadReadyForGeneration_(lead, config) {
 
 function generateEmailForLead_(lead, config) {
   var allowedCaseStudy = config['Allow case-study reference'] === true && normalizeWhitespace_(config['Approved case-study text']);
+  var emailWritingInstructions = renderEmailWritingInstructions_(config);
   var estimateInstructions = businessCaseEstimateInstructions_(config);
-  var estimateStructure = config['Business-case estimates enabled'] === true
-    ? '[One concise business-case estimate sentence. State one or two assumptions, give one conservative numeric range, and use could, may, might, roughly, about, approximately, estimate, hypothesis, or potential language.]'
-    : '[One concise operational workflow possibility using "could" or "may". Do not claim anything about current systems, processes, teams, ownership, integration, replacement, or migration.]';
   var userPrompt = [
     'Create one controlled first-contact email for this lead.',
     'Recipient first name: ' + lead['First Name'],
@@ -162,19 +160,11 @@ function generateEmailForLead_(lead, config) {
     'Workflow possibility: ' + lead['Likely Workflow Problem'],
     'Buyer relevance: ' + lead['Buyer Relevance'],
     '',
-    'Required structure:',
-    'Hi ' + lead['First Name'] + ',',
-    '',
-    '[One verified company-specific observation that uses the exact company name "' + lead['Company'] + '".]',
-    '',
-    estimateStructure,
-    '',
-    'Pixelate could build [the one specific recommended portal/tool and its evidence-grounded capabilities].',
-    '',
-    '[One low-pressure question.]',
+    'Editable email writing instructions:',
+    emailWritingInstructions,
     '',
     estimateInstructions,
-    'Rules: 65-' + config['Maximum email word count'] + ' words before signature and opt-out. Use the exact company name at least once. Mention Pixelate no more than once. Use exactly one project idea and no more than one quantified estimate. End with one question. Never claim that existing or current resources, systems, processes, teams, or tools will remain unchanged. Never make an integration, replacement, migration, or implementation claim. Do not use "without changing," "without replacing," or similar language. No markdown, links, signature, em dashes, fake compliments, aggressive CTA, guaranteed outcomes, unsupported metrics outside the declared business-case estimate, unsupported internal-system claims, internal-team assumptions, or generic opening. Generate two alternative subjects in addition to the selected subject. Do not use Re: or Fwd: on first contact.',
+    'Enforced source contract: Use only the supplied names, verified evidence, recommended project, workflow possibility, buyer relevance, approved case-study text, and clearly labeled estimate assumptions. Do not turn an estimate assumption into a research claim or current-state fact.',
     'Structured-output rule: research_claims_used must contain only exact verbatim copies of Verified evidence 1 and/or Verified evidence 2. Do not put project hypotheses, paraphrases, or any other claim in that array.',
     'Scoring rule: use quality_score 90-100 when every rule is met. Use a score below 80 only when quality_issues names a concrete defect, and set safe_to_send false for any blocking defect.',
     allowedCaseStudy ? 'The only approved case-study language is: ' + config['Approved case-study text'] : 'Do not mention any case study or customer.'
@@ -182,11 +172,22 @@ function generateEmailForLead_(lead, config) {
   var response = callOpenAIJson_({
     schemaName: 'pixelate_outreach_email',
     schema: emailOutputSchema_(),
-    systemPrompt: getTemplate_('Email system prompt') + '\n' + getTemplate_('Email rules'),
+    systemPrompt: 'You are Pixelate\'s controlled B2B outreach email writer. Follow the editable email-writing instructions and the enforced source and structured-output contracts supplied in the request. Return only the requested structured output. Do not add a signature.',
     userPrompt: userPrompt,
     allowWebSearch: false
   });
   return validateEmailJson_(response.data);
+}
+
+function renderEmailWritingInstructions_(config) {
+  var prompt = normalizeWhitespace_(config && config['Email writing instructions prompt']) || DEFAULT_EMAIL_WRITING_INSTRUCTIONS;
+  var maximumWords = Math.max(65, Number(config && config['Maximum email word count'] || 110));
+  var metrics = configuredBusinessCaseMetrics_(config).join(', ');
+  var hourlyRate = Math.max(1, Number(config && config['Default loaded hourly rate'] || 75));
+  return prompt
+    .replace(/\{\{MAX_EMAIL_WORDS\}\}/g, String(maximumWords))
+    .replace(/\{\{METRIC_PRIORITIES\}\}/g, metrics)
+    .replace(/\{\{LOADED_HOURLY_RATE\}\}/g, String(hourlyRate));
 }
 
 function configuredBusinessCaseMetrics_(config) {
@@ -207,10 +208,9 @@ function businessCaseEstimateInstructions_(config) {
   var hourlyRate = Math.max(1, Number(config['Default loaded hourly rate'] || 75));
   return [
     'Business-case estimate requirement:',
-    'Choose exactly one metric from this priority order: ' + metrics.join(', ') + '.',
+    'Choose exactly one metric from this configured priority order: ' + metrics.join(', ') + '.',
     'Create one conservative range from one or two transparent assumptions. Unknown volume, time, cost, conversion, error, or ticket inputs must be labeled as assumptions, never as facts about the company.',
-    'Prefer labor_dollars_saved, cycle_time_reduced, error_reduction, or support_tickets_avoided. Use revenue_gained only when the verified evidence makes a revenue workflow directly relevant.',
-    'For labor_dollars_saved, use $' + hourlyRate + ' per hour as the loaded-rate assumption unless verified evidence supplies a better figure, and show that rate in the email.',
+    'For labor_dollars_saved, use the configured $' + hourlyRate + ' per hour loaded-rate assumption and show that rate in the email.',
     'Use simple arithmetic that a recipient can inspect: volume times time saved times loaded rate, cycle duration times a conservative reduction, or volume times a conservative error or ticket reduction.',
     'The impact_hypothesis must be the exact full estimate sentence copied verbatim from the email body. Every impact_assumptions item must also be an exact phrase copied from that sentence. Use no more than two items.',
     'The estimate sentence must include a numeric range using "to" and uncertainty language such as could, may, might, roughly, about, approximately, estimate, hypothesis, or potential.',

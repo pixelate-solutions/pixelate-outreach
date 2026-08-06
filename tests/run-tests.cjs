@@ -175,6 +175,14 @@ test('transparent business-case ranges pass deterministic estimate validation', 
   assert.ok(!result.hardIssues.some(issue => /business-case|impact|metric|guaranteed/i.test(issue)), result.hardIssues.join('\n'));
 });
 
+test('editable overall email-writing prompt renders its configured placeholders', () => {
+  const guidance = 'Use {{MAX_EMAIL_WORDS}} words. Prioritize {{METRIC_PRIORITIES}} at ${{LOADED_HOURLY_RATE}} per hour.';
+  const prompt = context.renderEmailWritingInstructions_({'Maximum email word count':105,'Business-case metric priorities':'cycle_time_reduced,error_reduction','Default loaded hourly rate':88,'Email writing instructions prompt':guidance});
+  assert.ok(prompt.includes('Use 105 words.'));
+  assert.ok(prompt.includes('cycle_time_reduced, error_reduction'));
+  assert.ok(prompt.includes('$88 per hour'));
+});
+
 test('business-case guarantees and unlabeled financial claims remain blocked', () => {
   const lead = {'First Name':'Jane','Company':'Acme','Research Confidence':90,'Fit Level':'High','Fit Score':90,'Evidence 1':'Acme makes industrial pumps','Evidence 1 URL':'https://acme.com/pumps','Evidence 2':'Acme offers field service'};
   const guaranteed = 'Acme will save $30,000 to $60,000 each year.';
