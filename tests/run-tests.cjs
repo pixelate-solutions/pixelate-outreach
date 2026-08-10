@@ -58,10 +58,12 @@ const context = {
     newTrigger(handler) {
       const builder = {
         interval: 0,
+        delayMs: 0,
         timeBased() { return this; },
         everyMinutes(minutes) { this.interval = minutes; return this; },
+        after(milliseconds) { this.delayMs = milliseconds; return this; },
         create() {
-          const trigger = { handler, interval: this.interval, getHandlerFunction: () => handler };
+          const trigger = { handler, interval: this.interval, delayMs: this.delayMs, getHandlerFunction: () => handler };
           context.__triggers.push(trigger);
           return trigger;
         }
@@ -259,6 +261,21 @@ test('send progress records round-trip for the confirmation dialog', () => {
   assert.strictEqual(progress.status, 'running');
   assert.strictEqual(progress.processed, 1);
   assert.ok(progress.updatedAt > 0);
+});
+
+test('confirmed sends outside the window queue every approved item', () => {
+  scriptProperties.clear();
+  context.__triggers = [];
+  const items = [{row:2,type:'initial'},{row:3,type:'initial'}];
+  const result = context.queueConfirmedSendItems_(items, 'queue-token', {source:'manual'});
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(result)), {sent:0,failed:0,scheduled:2});
+  const continuation = JSON.parse(scriptProperties.get('SEND_CONTINUATION'));
+  assert.strictEqual(continuation.items.length, 2);
+  assert.strictEqual(continuation.progressToken, 'queue-token');
+  const progress = JSON.parse(scriptProperties.get('SEND_PROGRESS_queue-token'));
+  assert.strictEqual(progress.status, 'scheduled');
+  assert.strictEqual(progress.scheduled, 2);
+  assert.ok(context.__triggers.some(trigger => trigger.handler === 'continueSendBatch_' && trigger.delayMs === 30 * 60000));
 });
 
 test('stale send progress and confirmations are cleaned up', () => {

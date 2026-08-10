@@ -129,9 +129,11 @@ function confirmSendBatch(token) {
     if (!request || Date.now() - Number(request.createdAt) > 10 * 60 * 1000) throw new Error('This confirmation expired.');
     var config = getConfig_();
     if (config['Test mode'] === true) throw new Error('Sending is disabled in Test mode.');
-    if (!isWithinSendWindow_(new Date(), config)) throw new Error('Current time is outside the configured send days/hours.');
     lock = LockService.getDocumentLock();
     if (!lock.tryLock(30000)) throw new Error('Another draft or send operation is running.');
+    if (!isWithinSendWindow_(new Date(), config)) {
+      return queueConfirmedSendItems_(request.items, token, { source: 'manual' });
+    }
     var remaining = dailySendRemaining_(config, new Date());
     if (remaining <= 0) throw new Error('The daily send limit has already been reached.');
     var items = request.items.slice(0, remaining);
@@ -160,6 +162,34 @@ function confirmSendBatch(token) {
   } finally {
     if (lock) lock.releaseLock();
   }
+}
+
+function queueConfirmedSendItems_(items, progressToken, sendContext) {
+  var queued = Array.isArray(items) ? items.slice() : [];
+  if (!queued.length) throw new Error('No approved emails remain to queue.');
+  var scriptStore = PropertiesService.getScriptProperties();
+  if (scriptStore.getProperty(SEND_CONTINUATION_PROPERTY)) {
+    throw new Error('Another approved email batch is already queued.');
+  }
+  var createdAt = Date.now();
+  scriptStore.setProperty(SEND_CONTINUATION_PROPERTY, JSON.stringify({
+    createdAt: createdAt,
+    items: queued,
+    progressToken: progressToken,
+    sendContext: sendContext || { source: 'manual' }
+  }));
+  writeSendProgress_(progressToken, {
+    status: 'scheduled',
+    total: queued.length,
+    processed: 0,
+    sent: 0,
+    failed: 0,
+    scheduled: queued.length,
+    createdAt: createdAt,
+    message: 'Queued for the next configured send window.'
+  });
+  scheduleContinuation_('continueSendBatch_', 30);
+  return { sent: 0, failed: 0, scheduled: queued.length };
 }
 
 function processConfirmedSendItems_(items, config, startedAt, progressToken, sendContext) {
